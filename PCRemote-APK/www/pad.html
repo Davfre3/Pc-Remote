@@ -1,0 +1,1166 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#111418">
+<title>Mando</title>
+<style>
+  /* Todo el mando se dibuja en "u": 1u = 1/80 del ancho o 1/32 del alto (el menor), asi que
+     escala igual en cualquier movil y los botones nunca se solapan. --u lo fija el script. */
+  :root { --bg:#111418; --btn:#2a3038; --on:#4f8cff; --txt:#e8ecf2; --u:10px; --sl:0px; --sr:0px; }
+  * { box-sizing:border-box; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { overscroll-behavior:none; margin:0; height:100%; background:var(--bg); color:var(--txt); font-family:system-ui,sans-serif; overflow:hidden; }
+  #probe { position:fixed; visibility:hidden; padding-left:env(safe-area-inset-left,0px); padding-right:env(safe-area-inset-right,0px); }
+  #pad { position:fixed; left:0; right:0; top:50%; height:calc(var(--u)*32); transform:translateY(-50%); }
+  .b { position:absolute; display:grid; place-items:center; align-content:center; line-height:1.1; background:var(--btn); border-radius:50%; font-weight:700; font-size:calc(var(--u)*var(--f,2.8)); }
+  .b small { display:block; font-size:.4em; font-weight:600; opacity:.8; letter-spacing:.02em; }
+  .b.sq { border-radius:calc(var(--u)*1.2); }
+  .b.on { background:var(--on); filter:brightness(1.4); }
+  .b.cap small { font-size:.5em; font-weight:500; margin-top:.15em; }
+  .stick { position:absolute; border-radius:50%; background:#1b2027; border:2px solid #3a424d; }
+  .knob { position:absolute; width:46%; height:46%; left:27%; top:27%; border-radius:50%; background:#4a5463; }
+  .gbar { position:absolute; border-radius:99px; background:#1b2027; border:1px solid #3a424d; }
+  .gbar i { position:absolute; top:-1px; bottom:-1px; width:12%; left:44%; border-radius:99px; background:var(--on); }
+  #msg { position:fixed; inset:0; display:grid; place-items:center; align-content:center; background:rgba(0,0,0,.92); text-align:center; z-index:9; padding:12px; overflow-y:auto; }
+  /* El menu ya no cabe en horizontal: se desliza con el dedo (el resto de la pagina bloquea el gesto para los botones del mando).
+     'safe center' evita que la parte de arriba quede cortada e inalcanzable cuando sobra contenido */
+  #msg, #msg * { touch-action:pan-y; }
+  #msg { align-content:safe center; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
+  #msg input[type=range] { touch-action:auto; }
+  #msg.hide { display:none; }
+  #msgtxt { font-size:max(16px,4.6vmin); margin-bottom:1.5vmin; }
+  #menu { width:min(100%,640px); }
+  #menu[hidden] { display:none; }
+  .lbl { font-size:max(11px,2.8vmin); opacity:.7; margin:1.6vmin 0 .8vmin; text-transform:uppercase; letter-spacing:.08em; }
+  .row { display:flex; gap:1.6vmin; justify-content:center; }
+  .row button { flex:1; font:700 max(13px,3.8vmin) system-ui,sans-serif; padding:1.8vmin 1vmin; border:3px solid transparent; border-radius:14px; color:#fff; background:#2a3038; }
+  .row button.sel { border-color:#fff; }
+  .row button:not(.sel) { opacity:.6; }
+  .row .xbox, .tile.xbox { background:#107c10; } .row .ps4, .tile.ps4 { background:#003791; } .row .sw, .tile.sw { background:#e60012; }
+  /* Elegir mando: tarjetas grandes (como PC Remote); tocar una ya arranca el mando */
+  #home[hidden], #sett[hidden] { display:none; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(40vmin,1fr)); gap:2vmin; }
+  .tile { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.6vmin; padding:3vmin 1.4vmin; min-height:22vmin; border:3px solid transparent; border-radius:18px; color:#fff; font-family:system-ui,sans-serif; }
+  .tile b { font-size:max(28px,9vmin); line-height:1; }
+  .tile span { font-size:max(15px,4.4vmin); font-weight:800; }
+  .tile small { font-size:max(11px,2.8vmin); opacity:.85; }
+  .tile.sel { border-color:#fff; }
+  .link { margin:2.4vmin auto 0; display:block; background:none; border:0; color:#9bb4ff; font:600 max(13px,3.2vmin) system-ui,sans-serif; padding:1vmin 1.6vmin; }
+  #back { margin:0 auto 1vmin 0; }
+  /* "Gira el movil" solo mientras se juega: el menu se puede usar en vertical y al elegir mando se pone en horizontal */
+  #msg:not(.hide) ~ #rot { display:none !important; }
+  #gopts { display:flex; flex-wrap:wrap; gap:1vmin 3vmin; justify-content:center; align-items:center; margin-top:1.4vmin; font-size:max(12px,3vmin); }
+  #gopts[hidden] { display:none; }
+  #gopts[data-g=wheel] .aim { display:none; }
+  #gopts label, #accelrow:not([hidden]), #s2row:not([hidden]) { display:flex; align-items:center; gap:.6em; }
+  #dpadrow[hidden], #gyrosec[hidden] { display:none; }
+  #accelrow { margin-top:1.4vmin; }
+  #gopts input[type=range] { width:30vmin; touch-action:auto; }
+  #gwarn { flex-basis:100%; color:#ffcf5b; font-size:.9em; }
+  #go { margin-top:2.2vmin; font:700 max(16px,4.6vmin) system-ui,sans-serif; padding:1.6vmin 9vmin; border:0; border-radius:14px; background:var(--on); color:#fff; }
+  #hud { position:fixed; top:max(2px,calc(50% - var(--u)*16)); left:50%; transform:translateX(-50%); font-size:max(11px,calc(var(--u)*1.6)); opacity:.75; display:flex; gap:2em; z-index:5; white-space:nowrap; }
+  #hud span { pointer-events:none; }
+  .hbtn { pointer-events:auto !important; padding:0 1em; }
+  #gst { color:#ffcf5b; }
+  input[type=text] { user-select:text; -webkit-user-select:text; touch-action:auto; }
+  #perfrow { display:flex; align-items:center; justify-content:center; gap:.6em; margin-top:1.4vmin; font-size:max(12px,3vmin); }
+  #perfil { font:inherit; padding:.4em .7em; border-radius:10px; border:1px solid #3a424d; background:#1b2027; color:var(--txt); width:min(60vw,320px); }
+  /* ---- editor de diseno ---- */
+  body.edit #hud { display:none; }
+  body.edit #pad { outline:1px dashed #3a424d; }
+  body.edit #pad > * { opacity:.85; }
+  .esel { outline:3px dashed #ffcf5b; outline-offset:2px; opacity:1 !important; }
+  /* Barra del editor: en moviles estrechos los botones bajan a una segunda fila en vez de salirse de la pantalla */
+  #ebar { position:fixed; top:0; left:50%; transform:translateX(-50%); display:flex; flex-wrap:wrap; justify-content:center; gap:6px; z-index:6; padding:6px;
+    width:max-content; max-width:calc(100vw - var(--sl) - var(--sr) - 16px); background:rgba(17,20,24,.9); border-radius:0 0 12px 12px; }
+  #ebar[hidden], #eadd[hidden] { display:none; }
+  #ebar button, #eadd button { font:700 clamp(12px,calc(var(--u)*1.7),18px) system-ui,sans-serif; padding:.5em .8em; min-height:34px; border:0; border-radius:9px; background:#2a3038; color:#fff; white-space:nowrap; }
+  #ebar .ok { background:#25573a; } #ebar .del { background:#5a2a2e; }
+  /* Panel de Añadir / Color: se coloca justo debajo de la barra (su alto cambia segun el movil) y, si no cabe, se desliza */
+  #eadd { position:fixed; top:calc(var(--u)*5.5); left:50%; transform:translateX(-50%); z-index:7; display:flex; flex-wrap:wrap; gap:6px; justify-content:center; align-content:flex-start;
+    width:min(calc(100vw - var(--sl) - var(--sr) - 16px),640px); padding:10px; overflow-y:auto; overscroll-behavior:contain; background:rgba(17,20,24,.96); border:1px solid #3a424d; border-radius:12px; }
+  #eadd, #eadd * { touch-action:pan-y; }
+  #ehint { position:fixed; bottom:4px; left:50%; transform:translateX(-50%); z-index:6; font-size:clamp(10px,calc(var(--u)*1.4),15px); opacity:.7; text-align:center; width:max-content; max-width:calc(100vw - 16px); pointer-events:none; }
+  body:not(.edit) #ehint { display:none; }
+  #gorow { display:flex; gap:1.6vmin; justify-content:center; align-items:stretch; margin-top:2.2vmin; }
+  #gorow #go { margin-top:0; }
+  #scrgo { font:700 max(12px,3.2vmin) system-ui,sans-serif; padding:1vmin 2.4vmin; border:3px solid transparent; border-radius:14px; background:#2a3038; color:#fff; opacity:.6; }
+  #scrgo.sel { background:#5b3fd1; border-color:#fff; opacity:1; }
+  #scrgo[hidden], #scr[hidden], #viewrow[hidden] { display:none; }
+  #s2row { justify-content:center; margin-top:1vmin; font-size:max(12px,3vmin); }
+  #partrow[hidden] { display:none; }
+  #partrow .row { margin-top:1vmin; }
+  #partrow .row button { font-size:max(11px,3vmin); padding:1.2vmin .6vmin; }
+  #partnote { font-size:max(11px,2.6vmin); opacity:.7; margin-top:1vmin; }
+  .hint { font-size:max(11px,2.8vmin); opacity:.85; margin:.8vmin 0 0; padding:.8vmin 1.2vmin; border-left:3px solid #6b8cff; background:rgba(255,255,255,.06); border-radius:6px; text-align:left; }
+  .hint:empty { display:none; }
+  /* dibujo de la pantalla con la parte elegida en color */
+  .mini { display:block; position:relative; width:2.6em; height:1.5em; margin:0 auto .35em; border:2px solid rgba(255,255,255,.45); border-radius:3px; }
+  .mini::after { content:''; position:absolute; left:calc(var(--x)*100%); top:calc(var(--y)*100%); width:calc(var(--w)*100%); height:calc(var(--h)*100%); background:#5b3fd1; }
+  /* muestras de color: nunca menores que un dedo (34px) ni enormes en tablets */
+  #eadd .sw { width:clamp(34px,calc(var(--u)*4.6),52px); height:clamp(34px,calc(var(--u)*4.6),52px); min-height:0; padding:0; border:2px solid rgba(255,255,255,.35); border-radius:50%; }
+  #eadd .sw.cur { border-color:#fff; border-width:4px; }
+  #eadd input[type=color] { width:clamp(34px,calc(var(--u)*4.6),52px); height:clamp(34px,calc(var(--u)*4.6),52px); padding:0; border:0; background:none; touch-action:auto; }
+  #eadd .note { flex-basis:100%; text-align:center; font-size:clamp(10px,calc(var(--u)*1.4),15px); opacity:.75; }
+  /* las dos filas de pestanas van una al lado de la otra si caben, para tapar menos el mando */
+  #eadd .tabs { flex:1 1 240px; display:flex; flex-wrap:wrap; gap:6px; justify-content:center; }
+  #eadd .tabs button { flex:1 1 auto; opacity:.55; border:2px solid transparent; }
+  #eadd .tabs button.cur { opacity:1; border-color:#fff; background:#3a4250; }
+  @media (max-height:420px) { #eadd { padding:6px; gap:5px; } #eadd .tip { display:none; } }
+  /* pantalla del PC detras de los botones: estos se vuelven translucidos para dejar ver el juego */
+  #screen, #screenc { position:fixed; inset:0; width:100%; height:100%; object-fit:contain; background:#000; display:none; }
+  body.scr #screen { display:block; }
+  body.scr.vid #screen { display:none; }
+  body.scr.vid #screenc { display:block; }
+  body.scr .b:not(.on) { background:rgba(42,48,56,.42); background:color-mix(in srgb, var(--btn) 42%, transparent); }
+  body.scr .stick { background:rgba(27,32,39,.3); border-color:rgba(255,255,255,.25); }
+  body.scr .knob { background:rgba(74,84,99,.6); }
+  /* transparencia elegida en el editor (--ta = % de opacidad del fondo); gana a la automatica de la pantalla */
+  body .b.ta:not(.on) { background:rgba(42,48,56,var(--tn,1)); background:color-mix(in srgb, var(--btn) var(--ta), transparent); }
+  body .stick.ta { background:color-mix(in srgb, var(--sbg,#1b2027) var(--ta), transparent); }
+  body .stick.ta .knob { opacity:var(--tn,1); }
+  #eadd input[type=range] { touch-action:auto; flex:1 1 140px; min-width:120px; height:32px; }
+  #eadd .trow { flex-basis:100%; display:flex; align-items:center; gap:8px; font-size:clamp(11px,calc(var(--u)*1.5),16px); }
+  body.scr #hud { text-shadow:0 0 3px #000; }
+  #rot { display:none; }
+  @media (orientation:portrait) { #rot { display:grid; position:fixed; inset:0; place-items:center; background:var(--bg); z-index:10; font-size:6vmin; text-align:center; } }
+</style>
+</head>
+<body>
+<div id="probe"></div>
+<img id="screen" alt="" draggable="false"><canvas id="screenc"></canvas>
+<div id="pad"></div>
+<div id="hud"><span id="tag"></span><span id="ping"></span><span id="gst"></span><span id="part"></span><span id="scr" class="hbtn" hidden>📺</span><span id="fs" class="hbtn">⛶</span><span id="edit" class="hbtn">✎</span><span id="gear" class="hbtn">⚙</span></div>
+<div id="ebar" hidden>
+  <button id="eplus">＋</button><button id="eminus">－</button><button id="edel" class="del">Quitar</button>
+  <button id="ecolor">🎨 Color</button><button id="eaddb">Añadir</button><button id="ereset">Original</button>
+  <button id="ecopy">💾 Copias</button><button id="esave" class="ok">Guardar</button><button id="equit">Salir</button>
+</div>
+<div id="eadd" hidden></div>
+<div id="ehint">Toca un botón para elegirlo · arrastra para moverlo · pellizca con dos dedos o usa ＋ / － para cambiar su tamaño</div>
+<div id="msg"><div id="msgtxt">Conectando…</div>
+  <div id="menu" hidden>
+    <div id="home">
+      <div class="tiles">
+        <button class="tile xbox" data-k="type" data-v="xbox"><b>🎮</b><span>Xbox</span><small>Para casi todos los juegos</small></button>
+        <button class="tile ps4" data-k="type" data-v="ps4"><b>🕹</b><span>PlayStation</span><small>Iconos ✕ ○ □ △ (el PC lo ve como Xbox)</small></button>
+        <button class="tile ps4" data-k="type" data-v="ps4native"><b>🎧</b><span>PlayStation DS4</span><small>DualShock 4 real: iconos PS y touchpad</small></button>
+        <button class="tile sw" data-k="type" data-v="switch"><b>🔴</b><span>Switch</span><small>Disposición de Nintendo Switch</small></button>
+      </div>
+      <button id="toset" class="link">⚙ Ajustes: tipo de juego, giroscopio, pantalla…</button>
+      <button id="swpc" class="link" hidden>📱 Cambiar de PC</button>
+    </div>
+    <div id="sett" hidden>
+    <button id="back" class="link">← Elegir otro mando</button>
+    <label id="perfrow">Tu nombre <input type="text" id="perfil" maxlength="20" placeholder="para guardar tus botones (✎)"></label>
+    <div class="lbl">¿A qué vas a jugar?</div>
+    <div class="row">
+      <button data-k="mode" data-v="general">🎮 General</button>
+      <button data-k="mode" data-v="carreras">🏎 Carreras</button>
+      <button data-k="mode" data-v="peleas">🥊 Peleas</button>
+      <button data-k="mode" data-v="disparos">🔫 Disparos</button>
+      <button data-k="mode" data-v="deportes">⚽ Deportes</button>
+    </div>
+    <label id="accelrow"><input type="checkbox" id="accelA"> Acelerar con el botón A y frenar con B (Mario Kart)</label>
+    <div id="dpadrow">
+      <div class="lbl">Movimiento</div>
+      <div class="row">
+        <button data-fd="0">Solo palanca</button>
+        <button data-fd="1">Palanca + cruceta</button>
+      </div>
+      <div class="hint" id="fdhint"></div>
+    </div>
+    <div id="gyrosec">
+      <div class="lbl">Giroscopio</div>
+      <div class="row">
+        <button data-k="gyro" data-v="off">No usar</button>
+        <button data-k="gyro" data-v="wheel">Volante (inclinar)</button>
+        <button data-k="gyro" data-v="aim">Apuntar (mover el móvil)</button>
+      </div>
+      <div id="gopts" hidden>
+        <label>Sensibilidad <input type="range" id="sens" min="1" max="10" step="1"></label>
+        <label><input type="checkbox" id="inv"> Invertir giro</label>
+        <label class="aim"><input type="checkbox" id="invY"> Invertir vertical</label>
+        <label class="aim"><input type="checkbox" id="hold"> Solo con el gatillo izquierdo</label>
+        <div id="gwarn"></div>
+      </div>
+    </div>
+    <div id="viewrow" hidden>
+      <div class="lbl">Pantalla en el móvil</div>
+      <div class="row">
+        <button data-k="view" data-v="full">Toda la pantalla</button>
+        <button data-k="view" data-v="mine">Solo mi parte (pantalla dividida)</button>
+      </div>
+      <div id="partrow">
+        <div class="lbl">¿Qué parte es la tuya?</div>
+        <div class="row">
+          <button data-k="part" data-v="auto">Automático (según tu nº de jugador)</button>
+        </div>
+        <div class="row">
+          <button data-k="part" data-v="top"><i class="mini" style="--x:0;--y:0;--w:1;--h:.5"></i>Arriba</button>
+          <button data-k="part" data-v="bottom"><i class="mini" style="--x:0;--y:.5;--w:1;--h:.5"></i>Abajo</button>
+          <button data-k="part" data-v="left"><i class="mini" style="--x:0;--y:0;--w:.5;--h:1"></i>Izquierda</button>
+          <button data-k="part" data-v="right"><i class="mini" style="--x:.5;--y:0;--w:.5;--h:1"></i>Derecha</button>
+        </div>
+        <div class="row">
+          <button data-k="part" data-v="tl"><i class="mini" style="--x:0;--y:0;--w:.5;--h:.5"></i>Arriba izq.</button>
+          <button data-k="part" data-v="tr"><i class="mini" style="--x:.5;--y:0;--w:.5;--h:.5"></i>Arriba der.</button>
+          <button data-k="part" data-v="bl"><i class="mini" style="--x:0;--y:.5;--w:.5;--h:.5"></i>Abajo izq.</button>
+          <button data-k="part" data-v="br"><i class="mini" style="--x:.5;--y:.5;--w:.5;--h:.5"></i>Abajo der.</button>
+        </div>
+        <div id="partnote"></div>
+      </div>
+      <label id="s2row"><input type="checkbox" id="s2"> Con 2 jugadores la pantalla va lado a lado (no arriba y abajo)</label>
+    </div>
+    <div id="gorow">
+      <button id="go">Jugar</button>
+      <button id="scrgo" hidden>📺 Pantalla</button>
+    </div>
+    </div>
+  </div>
+</div>
+<div id="rot">Gira el móvil en horizontal</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const pad = $('pad'), msg = $('msg'), msgtxt = $('msgtxt'), menu = $('menu');
+const qs = new URLSearchParams(location.search), key = qs.get('k') || '';
+// En la app (APK) esta pagina vive dentro del movil y habla con el PC: ?srv=ip:puerto. En el navegador, con quien la sirvio
+const SRV = qs.get('srv') || '';
+const API = SRV ? 'http://' + SRV : '';
+const WSB = SRV ? 'ws://' + SRV : (location.protocol === 'https:' ? 'wss' : 'ws') + '://' + location.host;
+let ws, opened = false, full = false, retryTimer = null, retryUntil = 0;
+// Identificador estable de este navegador: al reconectar el servidor le devuelve su mismo hueco de jugador
+let cid = load('cid');
+if (!cid) { cid = Math.random().toString(36).slice(2, 10); store('cid', cid); }
+let state = { btn:{}, lx:0, ly:0, rx:0, ry:0, l:0, r:0 };
+const g = { lx:0, rx:0, ry:0 };   // aporte del giroscopio a los sticks (se suma al tactil)
+let gbar = null;
+
+function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+// Si la WiFi se atasca, los mensajes de stick se acumulan en el movil y luego llegan todos tarde (el mando
+// "va con retraso"). Mientras quede algo sin enviar no se encola otra posicion: al vaciarse se manda solo la ultima
+let stickWait = false;
+function sendSticks() {
+  if (!ws || ws.readyState !== 1) return;
+  if (ws.bufferedAmount > 0) {
+    if (!stickWait) { stickWait = true; setTimeout(() => { stickWait = false; sendSticks(); }, 4); }
+    return;
+  }
+  send({ t:'stick', lx:clamp(state.lx + g.lx, -1, 1), ly:state.ly, rx:clamp(state.rx + g.rx, -1, 1), ry:clamp(state.ry + g.ry, -1, 1) });
+}
+
+// ---- ajustes (se recuerdan entre visitas) ----
+const cfg = Object.assign({ type:load('type') || 'xbox', mode:'general', gyro:'off', sens:5, inv:false, invY:false, hold:false, accelA:false, fightDpad:false, view:'full', part:'auto', s2:false },
+  (() => { try { return JSON.parse(load('cfg')) || {}; } catch (e) { return {}; } })());
+
+// ---- escala: 1u = min(ancho/80, alto/32), descontando la zona segura (notch) ----
+function fit() {
+  const cs = getComputedStyle($('probe'));
+  const sl = parseFloat(cs.paddingLeft) || 0, sr = parseFloat(cs.paddingRight) || 0;
+  const r = document.documentElement.style;
+  r.setProperty('--sl', sl + 'px'); r.setProperty('--sr', sr + 'px');
+  r.setProperty('--u', Math.min((innerWidth - sl - sr) / 80, innerHeight / 32) + 'px');
+}
+addEventListener('resize', fit); addEventListener('orientationchange', fit); fit();
+
+// ---- menu: mando, tipo de juego y giroscopio ----
+// Al tocar una opcion, debajo de su fila se explica en una frase que hace
+const DESC = {
+  'type:xbox': 'Mando de Xbox. Sirve para casi cualquier juego de PC.',
+  'type:ps4': 'Botones con iconos de PlayStation (✕ ○ □ △), pero el PC lo ve como mando de Xbox: funciona en los juegos que solo aceptan Xbox.',
+  'type:ps4native': 'Un DualShock 4 de verdad: el juego muestra iconos de PlayStation y puedes usar el touchpad. Solo para juegos que lo soporten.',
+  'type:switch': 'Botones con la disposición de Nintendo Switch.',
+  'mode:general': 'Botones y palancas normales, sin opciones extra. Vale para cualquier juego.',
+  'mode:carreras': 'Pensado para juegos de coches: puedes usar el giroscopio como volante.',
+  'mode:peleas': 'Pensado para juegos de lucha: elige si quieres solo palanca o también cruceta.',
+  'mode:disparos': 'Para shooters (Call of Duty, Apex, Fortnite…): palanca para moverte, otra para apuntar, gatillos arriba y cada botón con su función. Puedes apuntar también moviendo el móvil.',
+  'mode:deportes': 'Pensado para juegos de fútbol y otros deportes.',
+  'gyro:off': 'No se usa el giroscopio: solo botones y palancas.',
+  'gyro:wheel': 'Inclinas el móvil como un volante para girar a izquierda y derecha.',
+  'gyro:aim': 'Mueves el móvil para apuntar, en vez de usar la palanca.',
+  'view:full': 'Ves toda la pantalla del PC detrás de tus botones.',
+  'view:mine': 'Si varios juegan en pantalla dividida, ves solo tu parte (y más grande).'
+};
+for (const k of ['mode', 'gyro', 'view']) {
+  const row = menu.querySelector(`[data-k="${k}"]`).parentElement, h = document.createElement('div');
+  h.className = 'hint'; h.dataset.h = k; row.after(h);
+}
+function syncMenu() {
+  for (const b of menu.querySelectorAll('[data-k]')) b.classList.toggle('sel', cfg[b.dataset.k] === b.dataset.v);
+  for (const h of menu.querySelectorAll('.hint')) h.textContent = DESC[`${h.dataset.h}:${cfg[h.dataset.h]}`] || '';
+  // Cada tipo de juego enseña solo sus opciones: carreras = giroscopio como volante y acelerar con A;
+  // peleas = palanca o palanca + cruceta; general y deportes = ninguna (se juega ya)
+  if (cfg.mode !== 'carreras' && cfg.gyro === 'wheel') cfg.gyro = 'off';   // el volante es solo de carreras
+  if (cfg.mode !== 'disparos' && cfg.gyro === 'aim') cfg.gyro = 'off';   // apuntar con el movil es de disparos
+  $('gyrosec').hidden = cfg.mode !== 'carreras' && cfg.mode !== 'disparos';
+  menu.querySelector('[data-k="gyro"][data-v="wheel"]').hidden = cfg.mode !== 'carreras';
+  menu.querySelector('[data-k="gyro"][data-v="aim"]').hidden = cfg.mode !== 'disparos';
+  $('gopts').hidden = cfg.gyro === 'off'; $('gopts').dataset.g = cfg.gyro;
+  $('accelrow').hidden = cfg.mode !== 'carreras'; $('accelA').checked = cfg.accelA;
+  for (const b of menu.querySelectorAll('[data-fd]')) b.classList.toggle('sel', (b.dataset.fd === '1') === !!cfg.fightDpad);
+  $('fdhint').textContent = cfg.fightDpad
+    ? 'Palanca para moverte y una cruceta aparte (útil en juegos de lucha que piden cruceta).'
+    : 'La palanca sirve también de cruceta: más simple, ideal si el juego acepta palanca.';
+  $('partrow').hidden = cfg.view !== 'mine';
+  $('s2row').hidden = cfg.view !== 'mine' || cfg.part !== 'auto'; $('s2').checked = cfg.s2;
+  $('partnote').textContent = cfg.part === 'auto'
+    ? 'El jugador 1 ve arriba (o la izquierda), el 2 abajo… Con un solo jugador conectado se ve la pantalla entera.'
+    : 'Verás siempre esta parte, aunque estés tú solo.';
+  $('dpadrow').hidden = cfg.mode !== 'peleas';  $('perfil').value = cfg.profile || '';
+  $('sens').value = cfg.sens; $('inv').checked = cfg.inv; $('invY').checked = cfg.invY; $('hold').checked = cfg.hold;
+  $('gwarn').textContent = cfg.gyro !== 'off' && !window.isSecureContext
+    ? 'Este navegador solo da el giroscopio en https o localhost: arranca el servidor con HTTPS o conecta por cable (adb).' : '';
+}
+function setStep(s) { $('home').hidden = s !== 'home'; $('sett').hidden = s !== 'sett'; }
+$('toset').addEventListener('click', () => setStep('sett'));
+if (SRV) { $('swpc').hidden = false; $('swpc').addEventListener('click', () => { location.href = 'index.html'; }); }   // vuelve a la pantalla de la app
+$('back').addEventListener('click', () => setStep('home'));
+function showMenu(text) {
+  setStep('home');
+  if (editing) stopEdit();
+  msg.classList.remove('hide'); msgtxt.textContent = text || 'Configura tu mando'; menu.hidden = false; syncMenu(); syncScreen();
+}
+menu.addEventListener('click', e => {
+  const b = e.target.closest('[data-k]'); if (!b) return;
+  cfg[b.dataset.k] = b.dataset.v; syncMenu();
+  if (b.classList.contains('tile')) $('go').click();   // elegir mando = jugar: pone pantalla completa y horizontal al momento
+});
+$('sens').addEventListener('input', e => { cfg.sens = +e.target.value; });
+$('perfil').addEventListener('input', e => { cfg.profile = e.target.value; });
+for (const b of menu.querySelectorAll('[data-fd]')) b.addEventListener('click', () => { cfg.fightDpad = b.dataset.fd === '1'; syncMenu(); });
+for (const id of ['inv', 'invY', 'hold', 'accelA', 's2']) $(id).addEventListener('change', e => { cfg[id] = e.target.checked; });
+$('gear').addEventListener('click', () => showMenu());
+
+// ---- pantalla completa (solo se puede pedir dentro de un toque; en iPhone Safari no existe) ----
+function goFullscreen() {
+  const el = document.documentElement, rq = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!rq || document.fullscreenElement || document.webkitFullscreenElement) return;
+  Promise.resolve(rq.call(el, { navigationUI:'hide' })).then(() => {
+    if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+  }).catch(() => {});
+}
+$('fs').addEventListener('click', () => {
+  if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  else goFullscreen();
+});
+
+$('go').addEventListener('click', async () => {
+  goFullscreen();
+  // iOS exige pedir el permiso dentro del gesto del usuario, antes de cualquier otro await
+  if (cfg.gyro !== 'off' && !(await motionPermission())) { cfg.gyro = 'off'; $('gst').textContent = 'giroscopio denegado'; }
+  store('cfg', JSON.stringify(cfg)); store('type', cfg.type);
+  syncMotion();
+  await loadLayouts();
+  if (ws && ws.readyState === 1 && cfg.type === type) {   // mismo mando: solo se redibuja, sin reconectar
+    // menu.hidden tambien: syncScreen no pide la imagen mientras cree que el menu sigue abierto
+    releaseAll(); build(); menu.hidden = true; msg.classList.add('hide'); tagText(); syncScreen();
+  } else { menu.hidden = true; msgtxt.textContent = 'Conectando…'; start(); }
+});
+
+// ---- pantalla del PC detras de los botones: el servidor manda fotos JPEG por un websocket aparte ----
+let sws = null, swsParams = '', screenLive = false, lastFrame = 0, h264ok = false;
+function screenOn() { return screenLive && cfg.screen !== false; }
+// H.264 (mas fluido y ligero) si el servidor puede codificarlo y este navegador puede decodificarlo; si no, JPEG
+function useVid() { return h264ok && window.isSecureContext && 'VideoDecoder' in window && 'EncodedVideoChunk' in window; }
+
+// ---- decodificador H.264: cada mensaje es [clave 0/1][datos Annex B]; el codec sale del SPS del fotograma clave ----
+let dec = null, decCodec = '', needKey = true, pend = null, raf = 0;
+function resetDecoder() {
+  if (dec) { try { dec.close(); } catch (e) {} }
+  dec = null; decCodec = ''; needKey = true;
+  if (pend) { pend.close(); pend = null; }
+}
+function spsCodec(d) {
+  for (let i = 0; i + 7 < d.length; i++) {
+    if (d[i] || d[i + 1]) continue;
+    const n = d[i + 2] === 1 ? i + 3 : (d[i + 2] === 0 && d[i + 3] === 1 ? i + 4 : -1);
+    if (n > 0 && (d[n] & 31) === 7) return 'avc1.' + [d[n + 1], d[n + 2], d[n + 3]].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  return '';
+}
+function paintVideo() {
+  raf = 0; const f = pend; pend = null; if (!f) return;
+  const c = $('screenc');
+  if (c.width !== f.displayWidth || c.height !== f.displayHeight) { c.width = f.displayWidth; c.height = f.displayHeight; }
+  c.getContext('2d').drawImage(f, 0, 0); f.close();
+}
+function decodeH264(buf) {
+  const u = new Uint8Array(buf), key = u[1] === 1, data = u.subarray(2);
+  if (key) {
+    const codec = spsCodec(data);
+    if (!codec) return;
+    if (!dec || codec !== decCodec) {   // primera vez o el servidor cambio de perfil/calidad: decodificador nuevo
+      resetDecoder(); decCodec = codec;
+      dec = new VideoDecoder({
+        output: f => { if (pend) pend.close(); pend = f; if (!raf) raf = requestAnimationFrame(paintVideo); },
+        error: () => { h264ok = false; closeScreen(); setTimeout(syncScreen, 300); }  // no se pudo: se pasa a JPEG
+      });
+      dec.configure({ codec, optimizeForLatency: true, avc: { format: 'annexb' } });
+    }
+    needKey = false;
+  }
+  if (!dec || needKey) return;
+  if (dec.decodeQueueSize > 8) { closeScreen(); setTimeout(syncScreen, 100); return; }   // el movil no da abasto: se pide de nuevo desde una clave
+  dec.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: Math.round(performance.now() * 1000), data }));
+}
+function syncScreen() {
+  const on = cfg.screen !== false;
+  $('scrgo').classList.toggle('sel', on);
+  $('scrgo').textContent = on ? '📺 Pantalla: Sí' : '📺 Pantalla: No';
+  $('scr').style.opacity = on ? 1 : .45;
+  const want = screenOn() && !!type && menu.hidden && !document.hidden;
+  document.body.classList.toggle('scr', want);
+  const vid = useVid();
+  document.body.classList.toggle('vid', want && vid);
+  $('scr').textContent = want && vid ? '📺 H.264' : '📺';   // asi se ve si va por H.264 o por JPEG
+  const params = `view=${cfg.view}&part=${cfg.part}&s2=${cfg.s2 ? 'v' : 'h'}&c=${cid}&v=${vid ? 'h264' : 'jpg'}`;
+  if (!want) $('part').textContent = '';
+  if (want && sws && swsParams !== params) closeScreen();   // cambio de "toda" a "mi parte": se pide de nuevo
+  if (want && !sws) openScreen(params);
+  else if (!want && sws) closeScreen();
+}
+function closeScreen() { const s = sws; sws = null; resetDecoder(); if (s) s.close(); }
+function openScreen(params) {
+  swsParams = params;
+  const s = sws = new WebSocket(`${WSB}/screen?k=${encodeURIComponent(key)}&${params}`);
+  const vid = params.includes('v=h264');
+  s.binaryType = vid ? 'arraybuffer' : 'blob';
+  lastFrame = Date.now();
+  let busy = false;
+  // Si el movil tarda en pintar una foto, las que llegan mientras tanto se descartan: siempre la mas reciente
+  s.onmessage = e => {
+    lastFrame = Date.now();
+    if (typeof e.data === 'string') { if (sws === s) showPart(JSON.parse(e.data).r); return; }
+    if (sws !== s) return;
+    if (vid) { if (new Uint8Array(e.data)[0] === 72) decodeH264(e.data); return; }   // 72 = 'H'
+    if (busy) return;
+    busy = true;
+    const next = URL.createObjectURL(e.data), img = $('screen'), prev = img.src;
+    img.onload = img.onerror = () => { busy = false; if (prev.startsWith('blob:')) URL.revokeObjectURL(prev); };
+    img.src = next;
+  };
+  s.onclose = () => { if (sws === s) { sws = null; setTimeout(syncScreen, 1000); } };
+}
+// El servidor avisa de que parte manda: se ve en la barra de arriba para saber que funciona
+const PART_NAMES = { '0,0,1,0.5':'arriba', '0,0.5,1,1':'abajo', '0,0,0.5,1':'izquierda', '0.5,0,1,1':'derecha',
+  '0,0,0.5,0.5':'arriba izq.', '0.5,0,1,0.5':'arriba der.', '0,0.5,0.5,1':'abajo izq.', '0.5,0.5,1,1':'abajo der.' };
+function showPart(r) {
+  const name = PART_NAMES[r.join(',')];
+  $('part').textContent = cfg.view !== 'mine' ? '' : name ? '📺 ' + name : '📺 entera (eres el único jugador)';
+}
+// Si la imagen se congela (cambio de red, movil bloqueado...) se vuelve a pedir sola
+setInterval(() => { if (sws && Date.now() - lastFrame > 3000) { closeScreen(); syncScreen(); } }, 1000);
+$('scrgo').addEventListener('click', () => { cfg.screen = cfg.screen === false; syncScreen(); });
+// En el juego, 📺 apaga o enciende la imagen; al encenderla siempre se reconecta de cero
+$('scr').addEventListener('click', () => {
+  cfg.screen = cfg.screen === false; store('cfg', JSON.stringify(cfg));
+  closeScreen(); syncScreen();
+});
+document.addEventListener('visibilitychange', syncScreen);
+
+// Se vuelve a preguntar cada pocos segundos: desde el panel del PC se puede encender o apagar la pantalla
+function loadInfo() { fetch(`${API}/info?k=${encodeURIComponent(key)}`).then(r => r.json()).then(i => {
+  screenLive = !!i.live; h264ok = !!i.h264;
+  $('scrgo').hidden = $('scr').hidden = $('viewrow').hidden = !screenLive;
+  syncScreen();
+}).catch(() => {}); }
+loadInfo(); setInterval(loadInfo, 5000);
+
+// ---- conexion ----
+let type = null, player = 0;
+const NAMES = { xbox:'Xbox', ps4:'PlayStation', ps4native:'PlayStation DS4', switch:'Switch' };
+const MODE_NAMES = { general:'General', carreras:'Carreras', peleas:'Peleas', disparos:'Disparos', deportes:'Deportes' };
+function tagText() { $('tag').textContent = player ? `Jugador ${player} · ${NAMES[type]} · ${MODE_NAMES[cfg.mode]}` : ''; }
+
+function connect() {
+  opened = false; full = false; player = 0;
+  ws = new WebSocket(`${WSB}/ws?k=${encodeURIComponent(key)}&type=${type}&c=${cid}`);
+  ws.onopen = () => { opened = true; retryUntil = 0; };
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.t === 'hello') { player = m.player; msg.classList.add('hide'); tagText(); syncScreen(); }
+    else if (m.t === 'full') { full = true; }
+    else if (m.t === 'pong') { lastRtt = Math.round(performance.now() - m.ts); $('ping').textContent = lastRtt + ' ms'; }
+    else if (m.t === 'rumble' && m.v > 0 && navigator.vibrate) navigator.vibrate(Math.min(200, m.v));
+  };
+  // Si una conexion que funcionaba se pierde, se reintenta sola unos 30 s; despues decide el usuario
+  ws.onclose = () => {
+    player = 0; tagText(); $('ping').textContent = '';
+    if (opened && !full) {
+      if (!retryUntil) retryUntil = Date.now() + 30000;
+      if (Date.now() < retryUntil) {
+        msg.classList.remove('hide'); menu.hidden = true; msgtxt.textContent = 'Reconectando…';
+        retryTimer = setTimeout(() => { build(); connect(); }, 1000);
+        return;
+      }
+      retryUntil = 0;
+    }
+    showMenu(full ? 'Ya hay 4 mandos conectados. Inténtalo de nuevo cuando se libere uno.'
+      : opened ? 'Conexión perdida. ¿Cómo quieres reconectar?'
+      : 'No se pudo conectar. ¿Reintentar como…?');
+  };
+}
+let lastRtt = null;   // la latencia que midio el movil; el panel del PC la ensena
+setInterval(() => send({ t:'ping', ts:performance.now(), rtt:lastRtt }), 1000);
+// Al volver a la pestaña (el movil la suspende con la pantalla apagada) se reconecta ya, sin esperar al reintento
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !type || !menu.hidden || (ws && ws.readyState <= 1)) return;
+  clearTimeout(retryTimer); retryUntil = 0; msg.classList.add('hide'); build(); connect();
+});
+
+// ---- giroscopio ----
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+let motionOn = false, gotMotion = false;
+async function motionPermission() {
+  const D = window.DeviceMotionEvent;
+  if (D && typeof D.requestPermission === 'function') {
+    try { return (await D.requestPermission()) === 'granted'; } catch (e) { return false; }
+  }
+  return true;
+}
+function syncMotion() {
+  const want = cfg.gyro !== 'off';
+  $('gst').textContent = '';
+  if (want === motionOn) { if (want) armMotionWarning(); return; }
+  motionOn = want;
+  if (want) { addEventListener('devicemotion', onMotion); armMotionWarning(); }
+  else { removeEventListener('devicemotion', onMotion); zeroGyro(); }
+}
+function armMotionWarning() {
+  gotMotion = false;
+  setTimeout(() => { if (motionOn && !gotMotion) $('gst').textContent = '⚠ sin datos del giroscopio (¿https?)'; }, 2500);
+}
+function zeroGyro() { if (g.lx || g.rx || g.ry) { g.lx = g.rx = g.ry = 0; sendSticks(); } if (gbar) gbar.firstChild.style.left = '44%'; }
+
+function onMotion(e) {
+  gotMotion = true;
+  // Pasa los ejes del aparato a los de la pantalla segun como se sujete el movil
+  const ang = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+  const c = Math.cos(ang * Math.PI / 180), s = Math.sin(ang * Math.PI / 180);
+  let lx = 0, rx = 0, ry = 0;
+  if (cfg.gyro === 'wheel') {
+    // Volante: se lee hacia donde cae la gravedad dentro del plano de la pantalla (angulo absoluto, sin deriva)
+    const a = e.accelerationIncludingGravity;
+    if (a && a.x != null) {
+      const sx = a.x * c - a.y * s, sy = a.x * s + a.y * c;
+      if (Math.hypot(sx, sy) > 3) {   // si el movil esta tumbado no hay "volante" que leer
+        const sg = Math.sign(sy) || 1;   // normaliza el signo de la gravedad: Android e iOS lo dan al reves
+        const deg = Math.atan2(-sx * sg, sy * sg) * 180 / Math.PI;   // + = gira a la derecha
+        lx = Math.abs(deg) < 2.5 ? 0 : clamp(deg / (80 - 6 * cfg.sens), -1, 1);
+        if (cfg.inv) lx = -lx;
+      }
+    }
+  } else {
+    // Apuntar: la velocidad de giro se convierte en inclinacion del stick derecho
+    const w = e.rotationRate;
+    if (w && w.beta != null && (!cfg.hold || state.l > 0.5)) {
+      const wx = w.beta * c - w.gamma * s, wy = w.beta * s + w.gamma * c, k = cfg.sens * 0.0025;
+      const dz = v => Math.abs(v) < 2 ? 0 : v;
+      rx = clamp(-dz(wy) * k * (cfg.inv ? -1 : 1), -1, 1);
+      ry = clamp(-dz(wx) * k * (cfg.invY ? -1 : 1), -1, 1);
+    }
+  }
+  if (Math.abs(lx - g.lx) < .004 && Math.abs(rx - g.rx) < .004 && Math.abs(ry - g.ry) < .004) return;
+  g.lx = lx; g.rx = rx; g.ry = ry;
+  if (gbar) gbar.firstChild.style.left = (44 + lx * 44) + '%';
+  sendSticks();
+}
+
+// ---- disenos personalizados ----
+// Cada disposicion (mando + modo + variante) guarda sus cambios: id -> { a,x,y,w,h } (posicion en u),
+// { hidden:1 } (quitado) o { add:1, ... } (boton anadido). Se guardan en el PC bajo el nombre de la persona.
+const ctl = {};   // id -> elemento del mando dibujado ahora
+let layouts = {}, editing = false, draft = {}, sel = null;
+const pid = () => (cfg.profile || '').trim().toLowerCase() || 'movil-' + cid;
+try { layouts = JSON.parse(load('layouts:' + pid())) || {}; } catch (e) {}
+function layoutKey() {
+  const m = cfg.mode;
+  return [cfg.type === 'ps4native' ? 'ps4' : cfg.type, m,
+    m === 'carreras' && cfg.gyro === 'wheel' ? 'volante' : '', m === 'carreras' && cfg.accelA ? 'botones' : '',
+    m === 'peleas' && cfg.fightDpad ? 'cruceta' : ''].filter(Boolean).join('.');
+}
+async function loadLayouts() {
+  try { layouts = JSON.parse(load('layouts:' + pid())) || {}; } catch (e) { layouts = {}; }
+  try {
+    const r = await fetch(`${API}/layouts?k=${encodeURIComponent(key)}&p=${encodeURIComponent(pid())}`);
+    if (r.ok) { const d = await r.json(); if (d && typeof d === 'object' && Object.keys(d).length) layouts = d; }
+  } catch (e) {}   // sin servidor se usa la copia del movil
+}
+async function saveLayouts() {
+  store('layouts:' + pid(), JSON.stringify(layouts));
+  try {
+    const r = await fetch(`${API}/layouts?k=${encodeURIComponent(key)}&p=${encodeURIComponent(pid())}`,
+      { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(layouts) });
+    return r.ok;
+  } catch (e) { return false; }
+}
+
+// Da un id estable a cada control (si se repite, A, A2...) y recuerda su posicion y letra originales
+function reg(el, id) {
+  let k = id, i = 2;
+  while (ctl[k]) k = id + i++;
+  ctl[k] = el; el.dataset.id = k; el._p0 = { ...el._p };
+  if (el.classList.contains('b')) el._f0 = parseFloat(el.style.getPropertyValue('--f')) || 2.8;
+  return el;
+}
+function setPos(el, p) {
+  place(el, p.a, p.x, p.y, p.w, p.h);
+  if (el._f0) el.style.setProperty('--f', el._f0 * Math.min(p.w / el._p0.w, p.h / el._p0.h));   // la letra crece con el boton
+}
+function applyLayout() {
+  const L = (editing ? draft : layouts[layoutKey()]) || {};
+  if (L['*']) for (const id in ctl) paint(ctl[id], L['*']);   // colores para todo el mando; cada boton puede cambiarlos
+  for (const id in L) {
+    const o = L[id];
+    const el = ctl[id] || (o.add ? addControl(id) : null);
+    if (!el) continue;
+    if (o.hidden) { el.style.display = 'none'; continue; }
+    if (o.w) setPos(el, o);
+    paint(el, o);
+  }
+  if (sel && ctl[sel]) ctl[sel].classList.add('esel');
+}
+
+// Colores del editor. Botones: bg = fondo, fg = letra. Palancas: bg = bola, fg = aro y base
+function paint(el, o) {
+  if (el.classList.contains('stick')) {
+    if (o.bg) el.firstChild.style.background = o.bg;
+    if (o.fg) { el.style.borderColor = o.fg; el.style.setProperty('--sbg', `color-mix(in srgb, ${o.fg} 28%, #111418)`); }
+  } else if (el.classList.contains('b')) {
+    if (o.bg) el.style.setProperty('--btn', o.bg);
+    if (o.fg) el.style.color = o.fg;
+  }
+  if (o.t != null && (el.classList.contains('stick') || el.classList.contains('b'))) {   // t = % de opacidad
+    el.classList.add('ta'); el.style.setProperty('--ta', o.t + '%'); el.style.setProperty('--tn', o.t / 100);
+  }
+}
+const COLORS = ['#c0392b', '#e67e22', '#d4ac0d', '#27ae60', '#16a085', '#2e86de', '#1f3fa8', '#8e44ad', '#d63384',
+  '#7f8c8d', '#2a3038', '#0b0d10', '#ffffff', '#ffcf5b'];
+// El panel va justo debajo de la barra, que en moviles estrechos ocupa dos filas, y nunca se sale por abajo
+function openBox() {
+  const box = $('eadd'), top = $('ebar').getBoundingClientRect().bottom + 6;
+  box.style.top = top + 'px'; box.style.maxHeight = (innerHeight - top - 8) + 'px';
+  box.hidden = false;
+}
+addEventListener('resize', () => { if (!$('eadd').hidden) openBox(); });
+
+// Botones que se pueden anadir aunque la disposicion no los traiga
+const ALL_CONTROLS = ['A','B','X','Y','LB','RB','LT','RT','UP','DOWN','LEFT','RIGHT','BACK','START','HOME','TOUCHPAD','L3','R3','LS','RS'];
+const CONTROL_NAMES = { LS:'Stick izq.', RS:'Stick der.', UP:'▲', DOWN:'▼', LEFT:'◀', RIGHT:'▶', TOUCHPAD:'Touchpad' };
+function controlLabel(name) {
+  const B = BRANDS[cfg.type], f = B.face;
+  return f[name] ? f[name][0] : CONTROL_NAMES[name] || ({ LB:B.lb, RB:B.rb, LT:B.lt, RT:B.rt, BACK:B.back, START:B.start, HOME:B.home })[name] || name;
+}
+function addControl(name) {
+  const B = BRANDS[cfg.type], f = B.face;
+  if (name === 'LS' || name === 'RS') return stick('c', 0, 16, 12, (x, y) => {
+    if (name === 'LS') { state.lx = x; state.ly = -y; } else { state.rx = x; state.ry = -y; } }, name);
+  if (name === 'LT' || name === 'RT') return trigger(name === 'LT' ? 'l' : 'r', controlLabel(name), 'c', -4.5, 13.5, 9, 5);
+  if (name === 'HOME' && !B.home || name === 'TOUCHPAD' && !B.touchpad) return null;
+  return button(name, controlLabel(name), 'c', -3.5, 12.5, 7, 7, f[name] ? { color:f[name][1] } : { sq:true, f:2 });
+}
+
+// ---- editor: tocar elige, arrastrar mueve, pellizcar o +/- cambia el tamano ----
+const unit = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--u')) || 10;
+function startEdit() {
+  releaseAll(); editing = true; sel = null;
+  draft = JSON.parse(JSON.stringify(layouts[layoutKey()] || {}));
+  document.body.classList.add('edit'); $('ebar').hidden = false; $('eadd').hidden = true;
+  build();
+}
+function stopEdit() {
+  editing = false; sel = null; touches.clear(); gest = null;
+  document.body.classList.remove('edit'); $('ebar').hidden = true; $('eadd').hidden = true;
+  build();
+}
+function select(id) {
+  if (sel && ctl[sel]) ctl[sel].classList.remove('esel');
+  sel = id && ctl[id] ? id : null;
+  if (sel) ctl[sel].classList.add('esel');
+}
+function clampPos(p) {
+  const u = unit(), W = pad.clientWidth / u, cs = getComputedStyle(document.documentElement);
+  const sl = parseFloat(cs.getPropertyValue('--sl')) / u || 0, sr = parseFloat(cs.getPropertyValue('--sr')) / u || 0;
+  p.y = clamp(p.y, 0, 32 - p.h);
+  p.x = p.a === 'c' ? clamp(p.x, -W / 2 + sl, W / 2 - sr - p.w) : clamp(p.x, 0, W - sl - sr - p.w);
+  return p;
+}
+function resizeP(p, k) {   // crece o encoge alrededor de su centro
+  const w = clamp(p.w * k, 3, 30), h = clamp(p.h * w / p.w, 1, 32);
+  p.x -= (w - p.w) / 2; p.y -= (h - p.h) / 2; p.w = w; p.h = h;
+  return p;
+}
+function commit(id, p) {
+  const el = ctl[id]; if (!el) return;
+  clampPos(p); setPos(el, p);
+  const r = v => Math.round(v * 100) / 100;
+  draft[id] = { ...(draft[id] || {}), a:p.a, x:r(p.x), y:r(p.y), w:r(p.w), h:r(p.h) };
+}
+
+const touches = new Map();   // dedo -> [x, y] mientras se edita
+let gest = null;
+function startGesture() {
+  const el = sel && ctl[sel], pts = [...touches.values()];
+  gest = el && pts.length ? { p:{ ...el._p }, pts, d:pts.length > 1 ? Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]) : 0 } : null;
+}
+// En modo edicion el pad intercepta los toques antes que los botones (fase de captura): nada llega al PC
+pad.addEventListener('pointerdown', e => {
+  if (!editing) return;
+  e.stopPropagation(); pad.setPointerCapture(e.pointerId);
+  touches.set(e.pointerId, [e.clientX, e.clientY]);
+  if (touches.size === 1) { const el = e.target.closest('[data-id]'); select(el && el.dataset.id); }
+  $('eadd').hidden = true;
+  startGesture();
+}, true);
+pad.addEventListener('pointermove', e => {
+  if (!editing || !touches.has(e.pointerId)) return;
+  e.stopPropagation(); touches.set(e.pointerId, [e.clientX, e.clientY]);
+  if (!gest) return;
+  const pts = [...touches.values()], p = { ...gest.p }, u = unit();
+  if (pts.length > 1 && gest.d) resizeP(p, Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]) / gest.d);
+  else {
+    const dx = (pts[0][0] - gest.pts[0][0]) / u;
+    p.x += p.a === 'r' ? -dx : dx; p.y += (pts[0][1] - gest.pts[0][1]) / u;
+  }
+  commit(sel, p);
+}, true);
+for (const t of ['pointerup', 'pointercancel']) pad.addEventListener(t, e => {
+  if (!editing || !touches.has(e.pointerId)) return;
+  e.stopPropagation(); touches.delete(e.pointerId); startGesture();
+}, true);
+
+$('edit').addEventListener('click', startEdit);
+$('eplus').addEventListener('click', () => sel && commit(sel, resizeP({ ...ctl[sel]._p }, 1.12)));
+$('eminus').addEventListener('click', () => sel && commit(sel, resizeP({ ...ctl[sel]._p }, 1 / 1.12)));
+$('edel').addEventListener('click', () => {
+  if (!sel) return;
+  if (draft[sel] && draft[sel].add) delete draft[sel]; else draft[sel] = { hidden:1 };
+  ctl[sel].style.display = 'none'; select(null);
+});
+$('eaddb').addEventListener('click', () => {
+  const box = $('eadd'); box.innerHTML = '';
+  const opt = (text, fn) => { const b = document.createElement('button'); b.textContent = text; b.onclick = () => { fn(); box.hidden = true; }; box.appendChild(b); };
+  // Primero los que se quitaron (vuelven a su sitio), luego los que esta disposicion no trae
+  for (const id in draft) if (draft[id].hidden) opt('↩ ' + ((ctl[id] && ctl[id].firstChild && ctl[id].firstChild.textContent.trim()) || CONTROL_NAMES[id] || id), () => {
+    delete draft[id]; build(); select(id);
+  });
+  const B = BRANDS[cfg.type];
+  for (const n of ALL_CONTROLS) {
+    if (ctl[n] || (n === 'HOME' && !B.home) || (n === 'TOUCHPAD' && !B.touchpad)) continue;
+    opt('＋ ' + controlLabel(n), () => { draft[n] = { add:1 }; build(); select(n); });
+  }
+  if (!box.children.length) opt('Ya están todos los botones', () => {});
+  openBox();
+});
+// Pintar: elige que (este boton o todo el mando) y que parte (fondo/letra, o bola/aro en las palancas)
+let paintAll = false, paintPart = 'bg';
+$('ecolor').addEventListener('click', () => { paintAll = !sel; paintPart = 'bg'; colorBox(); });
+function colorBox() {
+  const box = $('eadd'); box.innerHTML = '';
+  const add = (tag, cls, text, fn) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; if (fn) e.onclick = fn; return e; };
+  const tabs = (items, cur, fn) => {
+    const t = add('div', 'tabs');
+    for (const [v, text] of items) t.appendChild(add('button', v === cur ? 'cur' : '', text, () => { fn(v); colorBox(); }));
+    box.appendChild(t);
+  };
+  const isStick = !paintAll && sel && ctl[sel] && ctl[sel].classList.contains('stick');
+  if (sel) tabs([[false, 'Solo este'], [true, 'Todo el mando']], paintAll, v => { paintAll = v; });
+  else box.appendChild(add('div', 'note', 'Pintando todo el mando · toca un botón antes para pintar solo ese'));
+  tabs(isStick ? [['bg', 'Bola'], ['fg', 'Aro y base']] : paintAll ? [['bg', 'Fondos (y bolas)'], ['fg', 'Letras (y aros)']]
+    : [['bg', 'Fondo'], ['fg', 'Letra']], paintPart, v => { paintPart = v; });
+  const id = paintAll ? '*' : sel, cur = draft[id] && draft[id][paintPart];
+  const setColor = c => {
+    const o = { ...(draft[id] || {}) };
+    if (c) o[paintPart] = c; else delete o[paintPart];
+    if (Object.keys(o).length) draft[id] = o; else delete draft[id];
+    build();
+    for (const b of box.querySelectorAll('.sw')) b.classList.toggle('cur', b.dataset.c === (c || ''));
+  };
+  for (const c of COLORS) {
+    const b = add('button', 'sw' + (c === cur ? ' cur' : ''), '', () => setColor(c));
+    b.style.background = c; b.dataset.c = c; box.appendChild(b);
+  }
+  const pick = add('input'); pick.type = 'color'; pick.value = cur || '#2e86de';
+  pick.title = 'Otro color'; pick.oninput = () => setColor(pick.value); box.appendChild(pick);
+  box.appendChild(add('button', '', 'Original', () => setColor(null)));
+  // Transparencia del fondo: 0% = solido, 90% = casi invisible (para ver el juego detras)
+  const curT = draft[id] && draft[id].t != null ? 100 - draft[id].t : 0;
+  const trow = add('div', 'trow'), tlab = add('span', '', 'Transparencia ' + curT + '%'), rng = add('input');
+  rng.type = 'range'; rng.min = 0; rng.max = 90; rng.step = 5; rng.value = curT;
+  rng.oninput = () => {
+    const v = +rng.value, o = { ...(draft[id] || {}) };
+    tlab.textContent = 'Transparencia ' + v + '%';
+    if (v) o.t = 100 - v; else delete o.t;
+    if (Object.keys(o).length) draft[id] = o; else delete draft[id];
+    build();
+  };
+  trow.append(tlab, rng); box.appendChild(trow);
+  box.appendChild(add('button', '', 'Listo', () => { box.hidden = true; }));
+  box.appendChild(add('div', 'note tip', 'Los colores y la transparencia se guardan con el resto del diseño al pulsar Guardar'));
+  openBox();
+}
+// Copias: exportar todos mis diseños a un archivo .json (para pasarlos a otro movil o compartirlos) e importar uno
+function backupBox() {
+  const box = $('eadd'); box.innerHTML = '';
+  const add = (tag, cls, text, fn) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; if (fn) e.onclick = fn; return e; };
+  const note = add('div', 'note', '');
+  const all = () => {   // lo guardado + lo que se esta editando ahora
+    const out = JSON.parse(JSON.stringify(layouts)), k = layoutKey();
+    if (Object.keys(draft).length) out[k] = draft; else delete out[k];
+    return out;
+  };
+  box.appendChild(add('button', '', '⬇ Exportar mis diseños', async () => {
+    const data = all();
+    if (!Object.keys(data).length) { note.textContent = 'Aún no hay diseños que exportar: cambia algo y pulsa Guardar.'; return; }
+    const name = `mando-${(cfg.profile || 'diseños').trim().replace(/[^\w-]+/g, '_') || 'diseños'}.json`;
+    const file = new File([JSON.stringify({ app:'mandos', v:1, layouts:data }, null, 1)], name, { type:'application/json' });
+    try {
+      if (navigator.canShare && navigator.canShare({ files:[file] })) { await navigator.share({ files:[file], title:'Mis diseños de mando' }); note.textContent = 'Listo.'; return; }
+    } catch (e) { if (e && e.name === 'AbortError') return; }   // cancelado: no se descarga nada
+    const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    note.textContent = 'Archivo ' + name + ' descargado.';
+  }));
+  const inp = add('input'); inp.type = 'file'; inp.accept = '.json,application/json'; inp.hidden = true;
+  inp.onchange = async () => {
+    const f = inp.files[0]; inp.value = ''; if (!f) return;
+    try {
+      if (f.size > 65536) throw 0;
+      const d = JSON.parse(await f.text()), L = d && d.app === 'mandos' ? d.layouts : null;
+      if (!L || typeof L !== 'object' || Array.isArray(L)) throw 0;
+      let n = 0;
+      for (const k in L) {   // solo diseños con forma valida; cada control: objeto con numeros/textos sencillos
+        if (k === '__proto__') continue; const lay = L[k]; if (!lay || typeof lay !== 'object' || Array.isArray(lay)) continue;
+        const clean = {};
+        for (const id in lay) {
+          if (id === '__proto__') continue; const o = lay[id]; if (!o || typeof o !== 'object') continue;
+          const c = {};
+          for (const p of ['a', 'bg', 'fg']) if (typeof o[p] === 'string' && o[p].length <= 20) c[p] = o[p];
+          for (const p of ['x', 'y', 'w', 'h', 't']) if (Number.isFinite(o[p])) c[p] = o[p];
+          if (o.hidden) c.hidden = 1; if (o.add) c.add = 1;
+          clean[id] = c;
+        }
+        layouts[k] = clean; n++;
+      }
+      if (!n) throw 0;
+      draft = JSON.parse(JSON.stringify(layouts[layoutKey()] || {})); sel = null; build();
+      const ok = await saveLayouts();
+      note.textContent = `Importados ${n} diseño${n > 1 ? 's' : ''}.` + (ok ? '' : ' (guardados solo en este móvil)');
+    } catch (e) { note.textContent = 'Ese archivo no es una copia de diseños de mando.'; }
+  };
+  box.append(inp, add('button', '', '⬆ Importar desde un archivo', () => inp.click()));
+  box.append(add('button', '', 'Listo', () => { box.hidden = true; }));
+  note.textContent = 'Importar sustituye los diseños que traiga el archivo; los demás se quedan como están.';
+  box.appendChild(note);
+  openBox();
+}
+$('ecopy').addEventListener('click', backupBox);
+$('ereset').addEventListener('click', () => { draft = {}; sel = null; build(); });
+$('equit').addEventListener('click', stopEdit);
+$('esave').addEventListener('click', async () => {
+  const k = layoutKey();
+  if (Object.keys(draft).length) layouts[k] = draft; else delete layouts[k];
+  const ok = await saveLayouts();
+  stopEdit();
+  $('gst').textContent = ok ? '' : '⚠ guardado solo en este móvil';
+});
+
+// ---- construccion del mando ----
+// Anclas: 'l' = desde el borde izquierdo, 'r' = desde el borde derecho (x = hueco hasta el borde
+// del boton), 'c' = desde el centro (x = desplazamiento del borde izquierdo del boton). y desde arriba.
+function place(el, a, x, y, w, h) {
+  const s = el.style;
+  el._p = { a, x, y, w, h:h || w };   // posicion en u: la usa el editor de diseno
+  s.left = s.right = '';
+  if (a === 'l') s.left = `calc(var(--sl) + var(--u)*${x})`;
+  else if (a === 'r') s.right = `calc(var(--sr) + var(--u)*${x})`;
+  else s.left = `calc(50% + var(--u)*${x})`;
+  s.top = `calc(var(--u)*${y})`;
+  s.width = `calc(var(--u)*${w})`; s.height = `calc(var(--u)*${h || w})`;
+}
+// o.sub = rotulo pequeno bajo el simbolo, o.tint = color de fondo, o.color = color del simbolo
+function decorate(el, text, o) {
+  if (o.sub) {
+    const a = document.createElement('span'); a.textContent = text;
+    const m = document.createElement('small'); m.textContent = o.sub;
+    el.append(a, m);
+  } else el.textContent = text;
+  if (o.color) el.style.color = o.color;
+  if (o.tint) el.style.setProperty('--btn', o.tint);
+  if (o.f) el.style.setProperty('--f', o.f);
+}
+function button(name, label, a, x, y, w, h, o = {}) {
+  const el = document.createElement('div');
+  el.className = 'b' + (o.sq ? ' sq' : '');
+  decorate(el, label, o);
+  place(el, a, x, y, w, h);
+  const active = new Set();
+  const set = on => {
+    if (!!state.btn[name] === on) return;
+    state.btn[name] = on; el.classList.toggle('on', on);
+    send({ t:'btn', b:name, d:on ? 1 : 0 });
+  };
+  // pointerdown se dispara al primer contacto: sin esperar al "click"
+  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); active.add(e.pointerId); set(true); });
+  const up = e => { active.delete(e.pointerId); if (!active.size) set(false); };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  pad.appendChild(el);
+  return reg(el, name);
+}
+
+// cuatro botones en rombo alrededor de (cx, cy); ancla 'r' refleja el eje x
+function diamond(a, cx, cy, s, size, items) {
+  for (const [name, label, dx, dy, o] of items) {
+    const x = a === 'r' ? cx - dx - size / 2 : cx + dx - size / 2;
+    button(name, label, a, x, cy + dy - size / 2, size, size, o);
+  }
+}
+
+function stick(a, cx, cy, size, onMove, ctlId = 'LS') {
+  const base = document.createElement('div'); base.className = 'stick';
+  const knob = document.createElement('div'); knob.className = 'knob';
+  base.appendChild(knob); place(base, a, cx - size / 2, cy - size / 2, size); pad.appendChild(base);
+  let id = null;
+  const apply = e => {
+    const r = base.getBoundingClientRect(), R = r.width / 2;
+    let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R);
+    const d = Math.hypot(dx, dy); if (d > R) { dx *= R / d; dy *= R / d; }
+    knob.style.transform = `translate(${dx}px,${dy}px)`;
+    onMove(dx / R, dy / R);
+    sendSticks();  // inmediato, sin esperar al frame
+  };
+  base.addEventListener('pointerdown', e => { id = e.pointerId; base.setPointerCapture(id); apply(e); });
+  base.addEventListener('pointermove', e => { if (e.pointerId === id) apply(e); });
+  const end = e => { if (e.pointerId !== id) return; id = null; knob.style.transform = ''; onMove(0, 0); sendSticks(); };
+  base.addEventListener('pointerup', end); base.addEventListener('pointercancel', end);
+  return reg(base, ctlId);
+}
+
+function trigger(side, label, a, x, y, w, h, o = {}) {
+  const el = document.createElement('div'); el.className = 'b sq'; decorate(el, label, o); place(el, a, x, y, w, h);
+  const set = v => { state[side] = v; el.classList.toggle('on', !!v); send({ t:'trig', l:state.l, r:state.r }); };
+  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); set(1); });
+  const up = () => set(0);
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  pad.appendChild(el);
+  return reg(el, side === 'l' ? 'LT' : 'RT');
+}
+
+// La palanca de Peleas tambien pulsa la cruceta (8 direcciones, con margen para no fallar al diagonal)
+function stickToDpad(x, y) {
+  const m = Math.hypot(x, y), dx = m ? x / m : 0, dy = m ? y / m : 0, on = m > .45;
+  const want = { RIGHT:on && dx > .38, LEFT:on && dx < -.38, UP:on && dy > .38, DOWN:on && dy < -.38 };
+  for (const n in want) if (!!state.btn[n] !== want[n]) { state.btn[n] = want[n]; send({ t:'btn', b:n, d:want[n] ? 1 : 0 }); }
+}
+
+// Un cambio de disposicion no debe dejar nada pulsado en el PC
+function releaseAll() {
+  for (const n in state.btn) if (state.btn[n]) send({ t:'btn', b:n, d:0 });
+  send({ t:'trig', l:0, r:0 });
+  state.lx = state.ly = state.rx = state.ry = 0; zeroGyro(); sendSticks();
+}
+
+// Etiquetas por marca. Los nombres logicos (A/B/X/Y) son posiciones: A abajo, B derecha, X izquierda, Y arriba.
+// En Switch las letras van cambiadas (A a la derecha, B abajo...) y el mando virtual XInput recibe la misma posicion.
+const BRANDS = {
+  xbox: { stickFirst:true, face:{ A:['A','#5ec45e'], B:['B','#e65b5b'], X:['X','#5b8de6'], Y:['Y','#e6c95b'] },
+    lb:'LB', rb:'RB', lt:'LT', rt:'RT', back:'⧉', start:'☰', home:null, touchpad:false },
+  ps4: { stickFirst:false, face:{ A:['✕','#7ab8ff'], B:['○','#ff6b6b'], X:['□','#ff9ed2'], Y:['△','#5fe0a0'] },
+    lb:'L1', rb:'R1', lt:'L2', rt:'R2', back:'SHARE', start:'OPT', home:'PS', touchpad:true },
+  switch: { stickFirst:true, face:{ A:['B','#e8ecf2'], B:['A','#e8ecf2'], X:['Y','#e8ecf2'], Y:['X','#e8ecf2'] },
+    lb:'L', rb:'R', lt:'ZL', rt:'ZR', back:'−', start:'+', home:'⌂', touchpad:false },
+};
+BRANDS.ps4native = BRANDS.ps4;   // mismo diseño; el servidor crea un DualShock 4 virtual en vez de un XInput
+const RED = '#5a2a2e', GREEN = '#25573a';
+// Esquema por defecto de eFootball / PES / Football Life: funcion -> [boton logico, al atacar, al defender]
+const SPORT = { pase:['A','PASE','presionar'], tiro:['X','TIRO','ayuda'], hueco:['Y','HUECO','portero'],
+  centro:['B','CENTRO','barrida'], sprint:['RB','SPRINT',''], cambiar:['LB','CAMBIAR',''] };
+
+function build() {
+  const B = BRANDS[cfg.type], f = B.face, mode = cfg.mode, sq = { sq:true };
+  pad.innerHTML = ''; state = { btn:{}, lx:0, ly:0, rx:0, ry:0, l:0, r:0 }; g.lx = g.rx = g.ry = 0; gbar = null;
+  for (const k in ctl) delete ctl[k];
+  const dirs = (a, cx, cy, s, size) => diamond(a, cx, cy, s, size, [
+    ['UP','▲',0,-s,sq], ['DOWN','▼',0,s,sq], ['LEFT','◀',-s,0,sq], ['RIGHT','▶',s,0,sq]]);
+  const faces = (a, cx, cy, s, size, cap = {}, fs) => diamond(a, cx, cy, s, size, [
+    ['Y',f.Y[0],0,-s,{color:f.Y[1],sub:cap.Y,f:fs}], ['A',f.A[0],0,s,{color:f.A[1],sub:cap.A,f:fs}],
+    ['X',f.X[0],-s,0,{color:f.X[1],sub:cap.X,f:fs}], ['B',f.B[0],s,0,{color:f.B[1],sub:cap.B,f:fs}]]);
+  const stickL = (a, cx, cy, size) => stick(a, cx, cy, size, (x, y) => { state.lx = x; state.ly = -y; }, 'LS');
+  const stickR = (a, cx, cy, size) => stick(a, cx, cy, size, (x, y) => { state.rx = x; state.ry = -y; }, 'RS');
+  const small = { sq:true, f:1.8 };
+  // Pedales de Carreras. Con "acelerar con A" son botones: A (acelerar) y B (frenar) segun el rotulo de la marca;
+  // en Switch las letras van cambiadas, asi que la A rotulada es la posicion logica 'B'
+  const accelA = mode === 'carreras' && cfg.accelA;
+  const accelBtn = cfg.type === 'switch' ? 'B' : 'A', brakeBtn = cfg.type === 'switch' ? 'A' : 'B';
+  const pedal = (side, x, y, w, h) => {
+    const brake = side === 'l', o = brake ? { sub:'FRENO', tint:RED } : { sub:'ACELERAR', tint:GREEN };
+    if (!accelA) return trigger(side, brake ? B.lt : B.rt, side, x, y, w, h, o);
+    const name = brake ? brakeBtn : accelBtn;
+    button(name, f[name][0], side, x, y, w, h, { ...o, sq:true });
+  };
+
+  // franja central, igual en todos los modos: opciones arriba, L3/R3 (y touchpad) debajo
+  const center = withSticks => {
+    if (B.home) {
+      button('BACK', B.back, 'c', -12.5, 2.5, 8.5, 4.5, small);
+      button('HOME', B.home, 'c', -3, 2.5, 6, 4.5, { f:1.8 });
+      button('START', B.start, 'c', 4, 2.5, 8.5, 4.5, small);
+    } else {
+      button('BACK', B.back, 'c', -8.5, 2.5, 7, 4.5, { sq:true, f:2 });
+      button('START', B.start, 'c', 1.5, 2.5, 7, 4.5, { sq:true, f:2 });
+    }
+    if (!withSticks) return;
+    if (B.touchpad) {
+      button('L3', 'L3', 'c', -10, 8.3, 6.2, 4.5, small);
+      button('TOUCHPAD', 'PAD', 'c', -3.3, 8.3, 6.6, 4.5, small);
+      button('R3', 'R3', 'c', 3.8, 8.3, 6.2, 4.5, small);
+    } else {
+      button('L3', 'L3', 'c', -7.5, 8.3, 6, 4.5, small);
+      button('R3', 'R3', 'c', 1.5, 8.3, 6, 4.5, small);
+    }
+  };
+
+  if (mode === 'peleas') {
+    // Ocho botones de ataque en dos filas a la derecha. A la izquierda, una palanca grande que tambien hace de
+    // cruceta (los movimientos tipo ¼ de vuelta funcionan en juegos que solo leen la cruceta); o cruceta + palanca
+    if (cfg.fightDpad) {
+      dirs('l', 13.5, 20.5, 7.6, 7);
+      stickL('l', 33.5, 25, 10);
+    } else {
+      stick('l', 15, 20.5, 18, (x, y) => { state.lx = x; state.ly = -y; stickToDpad(x, -y); });
+    }
+    const cols = [1.5, 9.4, 17.3, 25.2];   // hueco hasta el borde derecho, de fuera hacia dentro
+    const row = (y, items) => items.forEach(([name, label, kind, o], i) => {
+      if (kind === 'trig') trigger(name === 'LT' ? 'l' : 'r', label, 'r', cols[i], y, 7, 7, o);
+      else button(name, label, 'r', cols[i], y, 7, 7, kind === 'sq' ? { ...o, sq:true } : o);
+    });
+    row(13.8, [['RB', B.rb, 'sq', {}], ['LB', B.lb, 'sq', {}], ['Y', f.Y[0], 'face', { color:f.Y[1] }], ['X', f.X[0], 'face', { color:f.X[1] }]]);
+    row(21.8, [['RT', B.rt, 'trig', {}], ['LT', B.lt, 'trig', {}], ['B', f.B[0], 'face', { color:f.B[1] }], ['A', f.A[0], 'face', { color:f.A[1] }]]);
+    center(true);   // L3 / R3: algunos juegos de pelea (Mortal Kombat) los usan
+    // Interruptor para cambiar en pleno juego entre cruceta + palanca y solo palanca
+    const mv = document.createElement('div'); mv.className = 'b sq';
+    decorate(mv, 'MOVER', { sub:cfg.fightDpad ? 'CRUCETA' : 'PALANCA', f:1.5 });
+    place(mv, 'c', 1, 19.5, 6, 3.6); pad.appendChild(mv); reg(mv, 'MOVER');
+    mv.addEventListener('pointerdown', () => {
+      cfg.fightDpad = !cfg.fightDpad; store('cfg', JSON.stringify(cfg));
+      releaseAll(); build();
+    });
+  } else if (mode === 'carreras' && cfg.gyro === 'wheel') {
+    // Volante con el giroscopio: pedales altos en los bordes (freno / acelerador), el resto en el centro
+    pedal('l', 1.5, 0.5, 14, 30);
+    pedal('r', 1.5, 0.5, 14, 30);
+    button('LB', B.lb, 'l', 17.5, 0.5, 9, 5.2, sq); button('RB', B.rb, 'r', 17.5, 0.5, 9, 5.2, sq);
+    dirs('l', 27, 21.5, 6, 5.6);
+    faces('r', 27, 21.5, 6, 5.6);
+    center(true);
+  } else if (mode === 'disparos') {
+    // Shooters (Call of Duty, Apex, Fortnite, Halo...) con el esquema estandar de Xbox: palanca izquierda mueve,
+    // la derecha apunta (en el borde, donde descansa el pulgar), los gatillos arriba para los indices y los
+    // botones de accion al lado del pulgar derecho. Cada boton dice su funcion; todo se puede mover con ✎
+    trigger('l', B.lt, 'l', 1.5, 0.5, 13, 6.4, { sub:'APUNTAR', f:2.2 });
+    trigger('r', B.rt, 'r', 1.5, 0.5, 13, 6.4, { sub:'DISPARAR', f:2.2, tint:RED });
+    button('LB', B.lb, 'l', 1.5, 7.2, 13, 4.8, { sq:true, sub:'TÁCTICO', f:1.9 });
+    button('RB', B.rb, 'r', 1.5, 7.2, 13, 4.8, { sq:true, sub:'GRANADA', f:1.9 });
+    button('L3', 'L3', 'l', 15.5, 2.5, 9, 6, { sq:true, sub:'CORRER', f:1.9 });
+    button('R3', 'R3', 'r', 15.5, 2.5, 9, 6, { sq:true, sub:'CUCHILLO', f:1.9 });
+    stickL('l', 11, 22, 15);
+    dirs('l', 29, 22, 5.2, 4.8);
+    stickR('r', 11, 22, 15);
+    diamond('r', 30, 22, 6.4, 6, [
+      ['Y', f.Y[0], 0, -6.4, { color:f.Y[1], sub:'ARMA', f:2 }], ['A', f.A[0], 0, 6.4, { color:f.A[1], sub:'SALTAR', f:2 }],
+      ['X', f.X[0], -6.4, 0, { color:f.X[1], sub:'RECARGAR', f:2 }], ['B', f.B[0], 6.4, 0, { color:f.B[1], sub:'AGACHAR', f:2 }]]);
+    for (const n of ['A', 'B', 'X', 'Y']) if (ctl[n]) ctl[n].classList.add('cap');
+    center(false);
+  } else if (mode === 'deportes') {
+    // Estilo eFootball movil para principiantes: palanca grande a la izquierda y cinco botones grandes en arco
+    // alrededor del pulgar derecho (el pase, el mas usado, es el mayor y el mas cercano). Cada boton dice que
+    // hace al atacar y, debajo, el boton del mando y lo que hace al defender
+    const S = SPORT;
+    const sym = n => f[n] ? f[n][0] : B[n.toLowerCase()];
+    const put = (role, a, x, y, w, h, o) => {
+      const [name, main, def] = S[role];
+      o = { ...o, sub:sym(name) + (def ? ' · ' + def : '') };
+      const el = name === 'LT' || name === 'RT' ? trigger(name[0] === 'L' ? 'l' : 'r', main, a, x, y, w, h, o)
+        : button(name, main, a, x, y, w, h, o);
+      el.classList.add('cap');
+      if (!o.sq) el.classList.remove('sq');   // los gatillos salen cuadrados; en el arco van redondos como el resto
+    };
+    // r = distancia del centro del boton al borde derecho, y = altura del centro
+    const arc = (role, r, y, size, fs, o = {}) => put(role, 'r', r - size / 2, y - size / 2, size, size, { f:fs, ...o });
+    stickL('l', 13, 19, 20);
+    arc('pase', 9, 23.5, 10.5, 2.5, { tint:'#2d4a7a' });
+    arc('tiro', 8, 11.5, 9, 2.2, { tint:RED });
+    arc('hueco', 19, 13, 8, 1.9);
+    arc('centro', 29.5, 17, 7.5, 1.7);
+    arc('sprint', 22, 25, 9, 1.9, { tint:GREEN });
+    put('cambiar', 'r', 1.5, 0.5, 13, 5.2, { sq:true, f:1.9 });
+    center(false);   // solo pausa / menu: L3, R3, cruceta y stick derecho sobran para empezar
+  } else {
+    // Disposicion de dos mitades: gatillos y hombros arriba, control principal fuera y secundario dentro
+    const race = mode === 'carreras';
+    if (race) {
+      pedal('l', 1.5, 0.5, 13, 9.5);
+      pedal('r', 1.5, 0.5, 13, 9.5);
+      button('LB', B.lb, 'l', 15.5, 0.5, 11, 5.2, sq); button('RB', B.rb, 'r', 15.5, 0.5, 11, 5.2, sq);
+    } else {
+      trigger('l', B.lt, 'l', 1.5, 0.5, 13, 5.5); trigger('r', B.rt, 'r', 1.5, 0.5, 13, 5.5);
+      button('LB', B.lb, 'l', 1.5, 6.3, 13, 4.4, sq); button('RB', B.rb, 'r', 1.5, 6.3, 13, 4.4, sq);
+    }
+    if (B.stickFirst || race) {   // moverse / girar siempre con stick; la cruceta queda dentro
+      stickL('l', 10, 22, 15);
+      dirs('l', 28.8, 21.8, 5.4, 5);
+    } else {   // PlayStation en modo general: cruceta fuera y stick dentro
+      dirs('l', 11, 21.6, 6.4, 6);
+      stickL('l', 29, 22, 13);
+    }
+    faces('r', 11, 21.6, 6.4, 6);
+    stickR('r', 29, 22, 13);
+    center(true);
+  }
+
+  // Interruptor del giroscopio, dentro del mando y en todos los modos (en Peleas va a la derecha del stick)
+  const gx = mode === 'peleas' ? 1 : -3, on = cfg.gyro !== 'off';
+  const sw = document.createElement('div'); sw.className = 'b sq';
+  decorate(sw, 'GYRO', { sub:on ? 'ON' : 'OFF', f:1.5, tint:on ? GREEN : null });
+  place(sw, 'c', gx, 26.6, 6, 3.6); pad.appendChild(sw); reg(sw, 'GYRO');
+  sw.addEventListener('pointerdown', toggleGyro);
+  if (cfg.gyro === 'wheel') {   // indicador del volante
+    gbar = document.createElement('div'); gbar.className = 'gbar'; gbar.appendChild(document.createElement('i'));
+    place(gbar, 'c', gx, 30.8, 6, 1.1); pad.appendChild(gbar); reg(gbar, 'GBAR');
+  }
+  applyLayout();
+}
+
+async function toggleGyro() {
+  if (cfg.gyro !== 'off') { cfg.gmode = cfg.gyro; cfg.gyro = 'off'; }
+  else {
+    cfg.gyro = cfg.gmode || (cfg.mode === 'carreras' ? 'wheel' : 'aim');
+    if (!(await motionPermission())) { cfg.gyro = 'off'; $('gst').textContent = 'giroscopio denegado'; }
+  }
+  store('cfg', JSON.stringify(cfg));
+  syncMotion(); releaseAll(); build();   // en Carreras + volante cambia la disposicion de los pedales
+}
+
+function start() {
+  clearTimeout(retryTimer); retryUntil = 0;
+  type = cfg.type; build(); fit();
+  if (ws) { ws.onclose = null; ws.close(); }
+  connect();
+}
+
+document.addEventListener('contextmenu', e => e.preventDefault());
+if (navigator.wakeLock) document.addEventListener('pointerdown', () => navigator.wakeLock.request('screen').catch(() => {}), { once:true });
+
+showMenu('Elige tu mando');
+</script>
+</body>
+</html>

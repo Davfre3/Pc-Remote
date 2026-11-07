@@ -1,0 +1,21 @@
+PC REMOTE - PROGRAMA DEL PC (.exe)
+==================================
+Carpeta:  PCRemote-EXE
+Resultado:
+  dist\PC-Remote-Instalador.exe   Instalador (instala el programa, el driver ViGEmBus y abre el firewall)
+  dist\PC Remote\PC Remote.exe    Version portable (sin instalar; si falta ViGEmBus lo instala al abrir)
+
+Volver a crearlo:   crear_exe.bat      (necesita el .venv del proyecto; Inno Setup para el instalador)
+Probarlo sin crear: "Abrir en modo desarrollo.bat"
+
+Codigo:  app\server.py (servidor + panel)   app\static\ (panel, pantalla de inicio y la pagina del mando)
+Datos del usuario (PIN, disenos, ajustes):  %APPDATA%\PCRemote
+Puertos:  8765 (app del movil, http)  y  8766 (navegador con giroscopio, https)
+
+La pagina del mando (app\static\index.html) es la unica copia: el APK la coge de aqui.
+
+CONEXIONES
+  El programa escucha en todas las vias a la vez; el panel muestra una pestana con su QR por cada una:
+    WiFi / red local  .  Cable USB (anclaje USB)  .  Bluetooth (anclaje)  .  Cable con depuracion USB (adb)
+  Cable con depuracion: necesita adb (platform-tools de Android). Se abre solo mientras el movil este conectado.
+  Seguridad: toda via pide el PIN. No lo compartas y no abras los puertos 8765-8766 a internet.

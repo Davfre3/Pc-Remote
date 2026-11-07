@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PC Remote</title>
+<style>
+  :root { --bg:#0d1117; --card:#151b23; --card2:#1b232d; --line:#263041; --txt:#e6edf3; --mut:#8b98a9;
+          --acc:#4f8cff; --ok:#2ecc71; --bad:#ff5d5d; --warn:#ffb020; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.45 system-ui,"Segoe UI",sans-serif; min-height:100%; }
+  body { padding:20px clamp(16px,4vw,32px) 28px; max-width:1040px; margin:0 auto; }
+  header { display:flex; align-items:center; gap:14px; margin-bottom:20px; flex-wrap:wrap; }
+  .logo { font-size:26px; line-height:1; }
+  h1 { font-size:20px; margin:0; font-weight:800; letter-spacing:.01em; }
+  .sub { color:var(--mut); font-size:13px; }
+  .pill { margin-left:auto; display:flex; align-items:center; gap:8px; padding:7px 14px; border-radius:99px; background:var(--card); border:1px solid var(--line); font-weight:600; font-size:14px; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--mut); }
+  .pill.on .dot { background:var(--ok); box-shadow:0 0 8px var(--ok); }
+  .grid { display:grid; grid-template-columns:minmax(260px,340px) 1fr; gap:18px; }
+  @media (max-width:720px) { .grid { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:20px; }
+  .card h2 { margin:0 0 14px; font-size:13px; letter-spacing:.09em; text-transform:uppercase; color:var(--mut); font-weight:700; }
+  .qr { background:#fff; border-radius:14px; padding:10px; width:min(100%,260px); aspect-ratio:1; margin:0 auto 16px; display:grid; place-items:center; }
+  .qr img { width:100%; height:100%; display:block; }
+  ol { margin:0 0 16px; padding-left:20px; color:var(--mut); }
+  ol li { margin:4px 0; } ol b { color:var(--txt); font-weight:600; }
+  .addr { display:flex; gap:8px; align-items:center; background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:8px 8px 8px 12px; }
+  .addr code { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; color:var(--mut); }
+  button { font:inherit; cursor:pointer; border:0; color:var(--txt); }
+  .btn { background:var(--acc); color:#fff; font-weight:700; font-size:13px; padding:8px 14px; border-radius:10px; }
+  .btn:active { transform:scale(.97); }
+  .players { display:grid; gap:10px; }
+  .pl { display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:14px; background:var(--card2); border:1px solid var(--line); min-height:64px; }
+  .pl .n { width:38px; height:38px; border-radius:50%; display:grid; place-items:center; font-weight:800; background:var(--line); color:var(--mut); flex:none; }
+  .pl.on .n { background:var(--acc); color:#fff; }
+  .pl .who { flex:1; min-width:0; }
+  .pl .who b { display:block; font-size:15px; }
+  .pl .who span { color:var(--mut); font-size:12.5px; }
+  .pl.free { opacity:.55; border-style:dashed; background:transparent; }
+  .chip { font-size:12px; font-weight:700; padding:4px 10px; border-radius:99px; background:var(--line); color:var(--mut); white-space:nowrap; }
+  .chip.ok { background:rgba(46,204,113,.15); color:var(--ok); } .chip.warn { background:rgba(255,176,32,.15); color:var(--warn); } .chip.bad { background:rgba(255,93,93,.15); color:var(--bad); }
+  .kick { background:transparent; border:1px solid var(--line); border-radius:10px; padding:6px 11px; font-size:12.5px; color:var(--mut); }
+  .kick:hover { border-color:var(--bad); color:var(--bad); } .kick.sure { background:var(--bad); border-color:var(--bad); color:#fff; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:18px; }
+  @media (max-width:720px) { .row2 { grid-template-columns:1fr; } }
+  .opt { display:flex; align-items:center; gap:14px; }
+  .opt .t { flex:1; } .opt .t b { display:block; } .opt .t span { color:var(--mut); font-size:13px; }
+  .sw { position:relative; width:52px; height:30px; border-radius:99px; background:var(--line); flex:none; transition:background .15s; }
+  .sw::after { content:""; position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%; background:#fff; transition:transform .15s; }
+  .sw.on { background:var(--ok); } .sw.on::after { transform:translateX(22px); }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:8px 16px; margin:0; font-size:14px; }
+  .kv dt { color:var(--mut); } .kv dd { margin:0; text-align:right; word-break:break-all; }
+  #toast { position:fixed; left:50%; bottom:22px; transform:translate(-50%,20px); background:#000; border:1px solid var(--line); padding:9px 16px; border-radius:99px; opacity:0; transition:.2s; pointer-events:none; font-size:13px; }
+  #toast.show { opacity:1; transform:translate(-50%,0); }
+  .err { color:var(--bad); }
+  .lbl2 { color:var(--mut); font-size:12px; margin:0 0 6px; }
+  .tabs { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px; }
+  .tabs button { background:var(--card2); border:1px solid var(--line); border-radius:99px; padding:6px 12px; font-size:12.5px; font-weight:600; color:var(--mut); }
+  .tabs button.cur { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .chint { color:var(--mut); font-size:12.5px; text-align:center; margin:-6px 0 14px; min-height:1.3em; }
+  .noconn { color:var(--warn); text-align:center; font-size:13.5px; padding:30px 8px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">🎮</div>
+  <div><h1>PC Remote</h1><div class="sub" id="pc">Este PC</div></div>
+  <div class="pill" id="status"><span class="dot"></span><span id="stxt">Cargando…</span></div>
+</header>
+
+<div class="grid">
+  <section class="card">
+    <h2>Conectar un móvil</h2>
+    <div class="tabs" id="conns"></div>
+    <div class="qr"><img id="qr" alt="Código QR para conectar"></div>
+    <div class="chint" id="chint"></div>
+    <ol>
+      <li>Conecta el móvil al PC: <b>WiFi, cable USB o Bluetooth</b> (elige la pestaña).</li>
+      <li>Abre la app <b>PC Remote</b> y pulsa <b>Escanear</b>.</li>
+      <li>Elige tu mando y <b>juega</b>.</li>
+    </ol>
+    <div class="lbl2">Sin la app (navegador del móvil)</div>
+    <div class="addr"><code id="url"></code><button class="btn" id="copy">Copiar</button></div>
+  </section>
+
+  <section class="card">
+    <h2>Jugadores</h2>
+    <div class="players" id="players"></div>
+  </section>
+</div>
+
+<div class="row2">
+  <section class="card">
+    <h2>Pantalla en el móvil</h2>
+    <div class="opt">
+      <div class="t"><b>Ver la pantalla del PC</b><span id="enc">Detrás de los botones del mando</span></div>
+      <button class="sw" id="scr" aria-label="Ver la pantalla en el móvil"></button>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Conexión</h2>
+    <dl class="kv">
+      <dt>Red</dt><dd id="via">—</dd>
+      <dt>Dirección</dt><dd id="addr">—</dd>
+      <dt>PIN</dt><dd id="pin">—</dd>
+      <dt>Giroscopio en navegador</dt><dd id="https">—</dd>
+    </dl>
+  </section>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id), K = new URLSearchParams(location.search).get('k') || '';
+const q = p => p + (p.includes('?') ? '&' : '?') + 'k=' + encodeURIComponent(K);
+const KINDS = { xbox:'Xbox', ps4:'PlayStation', switch:'Switch' };
+let last = null, sure = {};
+function toast(t) { const e = $('toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 1800); }
+function mmss(s) { return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+
+let selConn = null, qrKey = '';
+const curConn = () => last && (last.connections || []).find(c => c.id === selConn);
+$('copy').onclick = () => { const c = curConn(); navigator.clipboard.writeText(c ? c.web_url : '').then(() => toast('Dirección copiada')).catch(() => toast('No se pudo copiar')); };
+$('scr').onclick = async () => {
+  if (!last) return;
+  await fetch(q('/panel/screen'), { method:'POST', body:JSON.stringify({ on:!last.screen }) });
+  refresh();
+};
+
+function render(s) {
+  last = s;
+  $('pc').textContent = s.pc || 'Este PC';
+  const cs = s.connections || [];
+  if (!cs.find(c => c.id === selConn)) selConn = cs[0] ? cs[0].id : null;
+  const cur = cs.find(c => c.id === selConn);
+  const tabs = $('conns'), sig = cs.map(c => c.id).join('|') + '#' + selConn;
+  if (tabs.dataset.sig !== sig) {   // solo se redibuja si cambian las conexiones, para no parpadear
+    tabs.dataset.sig = sig; tabs.innerHTML = '';
+    cs.forEach(c => { const b = document.createElement('button'); b.textContent = c.name + (cs.filter(x => x.kind === c.kind).length > 1 ? ' · ' + c.ip : '');
+      if (c.id === selConn) b.className = 'cur'; b.onclick = () => { selConn = c.id; render(last); }; tabs.appendChild(b); });
+  }
+  const key = cur ? cur.id + cur.url : '';
+  if (key !== qrKey) { qrKey = key; $('qr').style.visibility = cur ? '' : 'hidden'; if (cur) $('qr').src = q('/panel/qr.svg?i=' + encodeURIComponent(cur.id)) + '&t=' + Date.now(); }
+  $('chint').textContent = cur ? cur.hint : '';
+  $('url').textContent = cur ? cur.web_url : 'Sin ninguna conexión: conecta el móvil por WiFi, cable USB o Bluetooth';
+  const n = s.players.filter(Boolean).length;
+  $('status').classList.toggle('on', n > 0);
+  $('stxt').textContent = n ? `${n} jugador${n > 1 ? 'es' : ''} conectado${n > 1 ? 's' : ''}` : 'Esperando móviles';
+  $('players').innerHTML = '';
+  s.players.forEach((p, i) => {
+    const d = document.createElement('div');
+    if (!p) { d.className = 'pl free'; d.innerHTML = `<div class="n">${i + 1}</div><div class="who"><b>Jugador ${i + 1}</b><span>Libre</span></div>`; }
+    else {
+      const quiet = p.idle > 3, rtt = p.rtt;
+      const cls = quiet ? 'bad' : rtt == null ? '' : rtt < 40 ? 'ok' : rtt < 100 ? 'warn' : 'bad';
+      d.className = 'pl on';
+      d.innerHTML = `<div class="n">${p.slot}</div><div class="who"><b>Jugador ${p.slot} · ${KINDS[p.kind] || p.kind}</b><span>${p.ip} · conectado ${mmss(p.seconds)}</span></div>
+        <span class="chip ${cls}">${quiet ? 'sin señal' : rtt == null ? '…' : rtt + ' ms'}</span><button class="kick">Expulsar</button>`;
+      d.querySelector('.kick').onclick = async e => {
+        const b = e.currentTarget;
+        if (!sure[p.slot]) { sure[p.slot] = 1; b.textContent = '¿Seguro?'; b.classList.add('sure'); setTimeout(() => { delete sure[p.slot]; refresh(); }, 3000); return; }
+        delete sure[p.slot]; await fetch(q('/panel/kick?slot=' + p.slot), { method:'POST' }); refresh();
+      };
+    }
+    $('players').appendChild(d);
+  });
+  $('scr').classList.toggle('on', s.screen);
+  $('enc').textContent = !s.screen ? 'Apagada: los móviles solo ven los botones'
+    : s.encoder ? `Encendida · vídeo H.264 (${s.encoder})` : 'Encendida · vídeo JPEG';
+  $('via').textContent = cs.length > 1 ? cs.length + ' conexiones disponibles' : (cur ? cur.name : s.via); $('addr').textContent = cur ? cur.address : '—'; $('https').textContent = s.https ? 'Disponible (https)' : 'No (usa la app)'; $('pin').textContent = s.pin || '—';
+}
+async function refresh() {
+  try { render(await (await fetch(q('/panel/state'))).json()); }
+  catch (e) { $('stxt').textContent = 'Sin conexión con el servidor'; $('status').classList.remove('on'); }
+}
+refresh(); setInterval(() => { if (!Object.keys(sure).length) refresh(); }, 1000);
+</script>
+</body>
+</html>

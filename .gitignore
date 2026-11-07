@@ -1,0 +1,17 @@
+# generado al compilar
+node_modules/
+build/
+dist/
+.gradle/
+__pycache__/
+*.log
+local.properties
+*.keystore
+*.jks
+# copia que genera "npx cap sync"
+PCRemote-APK/android/app/src/main/assets/public/
+PCRemote-APK/android/app/src/main/assets/capacitor.config.json
+PCRemote-APK/android/app/src/main/assets/capacitor.plugins.json
+PCRemote-APK/android/capacitor-cordova-android-plugins/
+# datos del usuario (si se ejecuta en modo desarrollo)
+PCRemote-EXE/app/data/

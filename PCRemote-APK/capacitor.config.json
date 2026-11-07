@@ -1,0 +1,8 @@
+{
+  "appId": "com.pcremote.app",
+  "appName": "PC Remote",
+  "webDir": "www",
+  "backgroundColor": "#0d1117",
+  "server": { "androidScheme": "https", "cleartext": true },
+  "android": { "allowMixedContent": true }
+}

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PC Remote</title>
+<style>
+  :root { --bg:#0d1117; --card:#151b23; --card2:#1b232d; --line:#263041; --txt:#e6edf3; --mut:#8b98a9;
+          --acc:#4f8cff; --ok:#2ecc71; --warn:#ffb020; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.45 system-ui,"Segoe UI",sans-serif; min-height:100%; }
+  body { padding:26px clamp(16px,4vw,36px) 32px; max-width:900px; margin:0 auto; }
+  header { text-align:center; margin-bottom:26px; }
+  .logo { font-size:44px; line-height:1; }
+  h1 { font-size:26px; margin:8px 0 2px; font-weight:800; }
+  .sub { color:var(--mut); }
+  h2 { margin:26px 0 12px; font-size:13px; letter-spacing:.09em; text-transform:uppercase; color:var(--mut); font-weight:700; }
+  .vias { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px; }
+  .via { text-align:left; display:flex; gap:14px; align-items:flex-start; padding:16px; border-radius:16px; background:var(--card); border:2px solid var(--line); font:inherit; color:var(--txt); cursor:pointer; transition:border-color .12s, opacity .12s; }
+  .via .ic { font-size:30px; line-height:1; flex:none; margin-top:2px; }
+  .via b { display:block; font-size:16px; }
+  .via .st { font-size:13px; font-weight:700; margin:2px 0 4px; color:var(--mut); }
+  .via .st.ok { color:var(--ok); }
+  .via .hp { font-size:12.5px; color:var(--mut); }
+  .via.off { opacity:.55; cursor:default; }
+  .via.sel { border-color:var(--acc); background:var(--card2); box-shadow:0 0 0 3px rgba(79,140,255,.18); }
+  .opts { display:grid; gap:10px; }
+  .opt { display:flex; align-items:center; gap:14px; padding:14px 16px; border-radius:16px; background:var(--card); border:1px solid var(--line); }
+  .opt .t { flex:1; } .opt .t b { display:block; } .opt .t span { color:var(--mut); font-size:13px; }
+  .opt.dis { opacity:.5; }
+  .sw { position:relative; width:52px; height:30px; border-radius:99px; background:var(--line); flex:none; border:0; cursor:pointer; transition:background .15s; }
+  .sw::after { content:""; position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%; background:#fff; transition:transform .15s; }
+  .sw.on { background:var(--ok); } .sw.on::after { transform:translateX(22px); }
+  .go { display:block; width:100%; margin-top:28px; padding:16px; border:0; border-radius:16px; background:var(--acc); color:#fff; font:800 18px system-ui,sans-serif; cursor:pointer; }
+  .go:disabled { background:var(--line); color:var(--mut); cursor:default; }
+  .go:not(:disabled):active { transform:scale(.99); }
+  .note { text-align:center; color:var(--mut); font-size:13px; margin-top:12px; min-height:1.4em; }
+  .spin { display:inline-block; width:12px; height:12px; border:2px solid var(--mut); border-top-color:transparent; border-radius:50%; animation:r .8s linear infinite; vertical-align:-2px; margin-right:6px; }
+  @keyframes r { to { transform:rotate(360deg); } }
+  #busy { position:fixed; inset:0; background:var(--bg); display:none; place-items:center; text-align:center; z-index:5; }
+  #busy.show { display:grid; }
+  #busy .spin { width:34px; height:34px; border-width:4px; margin:0 0 16px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">🎮</div>
+  <h1>PC Remote</h1>
+  <div class="sub" id="pc">Convierte tu móvil en un mando para este PC</div>
+</header>
+
+<h2>¿Cómo conectas el móvil?</h2>
+<div class="vias" id="vias"></div>
+
+<h2>Opciones</h2>
+<div class="opts">
+  <div class="opt"><div class="t"><b>Ver la pantalla del PC en el móvil</b><span id="encdesc">Se ve detrás de los botones del mando</span></div><button class="sw" id="scr" aria-label="Ver la pantalla en el móvil"></button></div>
+  <div class="opt" id="httpsrow"><div class="t"><b>Giroscopio en el navegador (HTTPS)</b><span id="httpsdesc">Solo si usas el navegador en vez de la app. La app de PC Remote no lo necesita.</span></div><button class="sw" id="https" aria-label="HTTPS"></button></div>
+</div>
+
+<button class="go" id="go" disabled>Iniciar</button>
+<div class="note" id="note"><span class="spin"></span>Buscando conexiones…</div>
+
+<div id="busy"><div><div class="spin"></div><div id="busytxt">Iniciando…</div></div></div>
+
+<script>
+const $ = id => document.getElementById(id), K = new URLSearchParams(location.search).get('k') || '';
+const ICONS = { wifi:'📶', usb:'🔌', bluetooth:'🔷', adb:'🛠' };
+let st = null, sel = null, scr = true, https = true, userPicked = false, started = false;
+
+function paint() {
+  if (!st) return;
+  const detected = st.vias.filter(v => v.detected);
+  if (sel && !detected.some(v => v.id === sel)) sel = null;
+  if (!sel && !userPicked) sel = (detected.find(v => v.id === st.saved.via) || detected[0] || {}).id || null;
+  $('vias').innerHTML = '';
+  for (const v of st.vias) {
+    const b = document.createElement('button');
+    b.className = 'via' + (v.detected ? '' : ' off') + (v.id === sel ? ' sel' : '');
+    b.innerHTML = `<div class="ic">${ICONS[v.id]}</div><div><b>${v.name}</b><div class="st ${v.detected ? 'ok' : ''}">${v.detected ? '● Detectada' + (v.id === 'adb' ? '' : ' · ' + v.ip) : '○ No detectada'}</div><div class="hp">${v.help}</div></div>`;
+    if (v.detected) b.onclick = () => { sel = v.id; userPicked = true; paint(); };
+    $('vias').appendChild(b);
+  }
+  $('scr').classList.toggle('on', scr);
+  const adb = sel === 'adb';
+  $('httpsrow').classList.toggle('dis', adb);
+  $('https').classList.toggle('on', https && !adb);
+  $('https').disabled = adb;
+  $('httpsdesc').textContent = adb ? 'No hace falta por cable: el móvil abre localhost, que ya es seguro.'
+    : 'Solo si usas el navegador del móvil en vez de la app. La app de PC Remote no lo necesita.';
+  $('encdesc').textContent = st.encoder ? `Se ve detrás de los botones · vídeo H.264 (${st.encoder})` : 'Se ve detrás de los botones del mando';
+  $('go').disabled = !sel || started;
+  $('note').innerHTML = sel ? '' : (detected.length ? 'Elige una conexión' : '<span class="spin"></span>Buscando conexiones… conecta el móvil a la misma red o con cable');
+  $('pc').textContent = 'Convierte tu móvil en un mando para ' + (st.pc || 'este PC');
+}
+async function poll() {
+  try {
+    const first = !st;
+    st = await (await fetch('/setup/state?k=' + K)).json();
+    if (first) { if (st.saved.pantalla !== undefined) scr = !!st.saved.pantalla; if (st.saved.https !== undefined) https = !!st.saved.https; }
+    paint();
+  } catch (e) {}
+}
+$('scr').onclick = () => { scr = !scr; paint(); };
+$('https').onclick = () => { https = !https; paint(); };
+$('go').onclick = async () => {
+  if (!sel || started) return;
+  started = true; $('busy').classList.add('show');
+  const r = await fetch('/setup/start?k=' + K, { method:'POST', body:JSON.stringify({ via:sel, https, pantalla:scr }) });
+  const { panel_url } = await r.json();
+  // El servidor tarda un poco en arrancar: se espera a que conteste y entonces esta misma ventana pasa al panel
+  for (let i = 0; i < 100; i++) {
+    try { await fetch(panel_url, { mode:'no-cors' }); location.href = panel_url; return; } catch (e) { await new Promise(r => setTimeout(r, 500)); }
+  }
+  $('busytxt').textContent = 'No se pudo iniciar. Mira la ventana de consola.';
+};
+poll(); setInterval(poll, 2000);
+</script>
+</body>
+</html>

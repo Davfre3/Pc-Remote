@@ -380,6 +380,10 @@ def all_connections(app):
         out.append({"id": f"{kind}-{ip}", "kind": kind, "name": KIND_NAMES.get(kind, kind), "hint": KIND_HINTS.get(kind, ""),
                     "ip": ip, "address": f"{ip}:{port}", "url": f"http://{ip}:{port}/?k={token}",
                     "web_url": f"https://{ip}:{port + 1}/?k={token}" if https else f"http://{ip}:{port}/?k={token}"})
+    if app["info"].get("bt_on"):
+        out.append({"id": "BT", "kind": "BTDirecto", "name": "Bluetooth directo (solo botones)", "nourl": True,
+                    "hint": "Sin pantalla del PC. Empareja el móvil con el PC en Bluetooth y, en la app, pulsa «Bluetooth».",
+                    "ip": "", "address": "", "url": "", "web_url": ""})
     if adb_ready():
         out.append({"id": "ADB", "kind": "ADB", "name": KIND_NAMES["ADB"], "hint": KIND_HINTS["ADB"], "ip": "localhost",
                     "address": f"localhost:{port}", "url": f"http://localhost:{port}/?k={token}",
@@ -388,6 +392,7 @@ def all_connections(app):
     out.sort(key=lambda c: c["kind"] not in pref)
     return out
 
+_BT_KEEP = []
 KIND_STEPS = {"WiFi": "Conecta el PC y el móvil a la misma red WiFi (o activa el punto de acceso del móvil y conecta el PC a él).",
               "Cable USB": "1) Conecta el móvil con el cable USB.\n2) En el móvil: Ajustes > Conexiones > Punto de acceso y anclaje > Anclaje USB.\n3) Espera unos segundos: aparecerá aquí.",
               "Bluetooth": "1) Empareja el móvil con el PC por Bluetooth.\n2) En el móvil activa «Anclaje Bluetooth».\n3) En el PC: Configuración > Bluetooth > el móvil > Conectar (red).",
@@ -1322,7 +1327,15 @@ def main():
     panel_url = f"http://127.0.0.1:{args.port}/panel?k={token}"
     threading.Thread(target=adb_watch, args=(args.port,), daemon=True).start()
 
-    async def on_start(_app):   # un segundo despues: el servidor aun no escucha mientras corre on_startup
+    async def on_start(_app):
+        try:
+            import btlink
+            bt = btlink.BtServer(args.port, token, asyncio.get_running_loop(), diag)
+            if bt.start():
+                _app["info"]["bt_on"] = True
+                _BT_KEEP.append(bt)
+        except Exception as e:   # sin Bluetooth en el PC el resto funciona igual
+            diag(f"bluetooth: {e}")   # un segundo despues: el servidor aun no escucha mientras corre on_startup
         if not args.sin_panel and not choice:   # con pantalla de inicio, esa misma ventana pasa sola al panel
             asyncio.get_running_loop().call_later(1.0, open_panel_window, panel_url)
     app.on_startup.append(on_start)

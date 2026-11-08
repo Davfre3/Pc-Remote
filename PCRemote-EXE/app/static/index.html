@@ -232,6 +232,28 @@ const qs = new URLSearchParams(location.search), key = qs.get('k') || '';
 // En la app (APK) esta pagina vive dentro del movil y habla con el PC: ?srv=ip:puerto. En el navegador, con quien la sirvio
 const SRV = qs.get('srv') || '';
 const API = SRV ? 'http://' + SRV : '';
+// Bluetooth directo (solo en la app): ?bt=direccion. Sin pantalla del PC: solo botones, palancas y giroscopio
+const BT = qs.get('bt') || '', BT_UUID = '7a1f2b64-3c5d-4e8a-9b10-5043524d4f54';
+class BtSocket {   // se comporta como un WebSocket, pero habla por el canal Bluetooth de la app
+  constructor(addr, pin, type, cid) {
+    this.readyState = 0; this.bufferedAmount = 0; this.hs = [];
+    const P = this.P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.BtPad;
+    if (!P) { setTimeout(() => this._end(), 0); return; }
+    P.addListener('line', e => { if (this.onmessage) this.onmessage({ data: e.data }); }).then(h => this.hs.push(h));
+    P.addListener('closed', () => this._end()).then(h => this.hs.push(h));
+    P.open({ address: addr, uuid: BT_UUID })
+      .then(() => P.write({ data: JSON.stringify({ k: pin, type, c: cid }) }))
+      .then(() => { this.readyState = 1; if (this.onopen) this.onopen(); })
+      .catch(() => this._end());
+  }
+  send(d) { this.bufferedAmount++; this.P.write({ data: d }).catch(() => this._end()).finally(() => this.bufferedAmount--); }
+  close() { if (this.P) this.P.close().catch(() => {}); this._end(); }
+  _end() {
+    if (this.readyState === 3) return;
+    this.readyState = 3; this.hs.forEach(h => h.remove());
+    if (this.onclose) this.onclose();
+  }
+}
 const WSB = SRV ? 'ws://' + SRV : (location.protocol === 'https:' ? 'wss' : 'ws') + '://' + location.host;
 let ws, opened = false, full = false, retryTimer = null, retryUntil = 0;
 // Identificador estable de este navegador: al reconectar el servidor le devuelve su mismo hueco de jugador
@@ -468,7 +490,7 @@ $('scr').addEventListener('click', () => {
 document.addEventListener('visibilitychange', syncScreen);
 
 // Se vuelve a preguntar cada pocos segundos: desde el panel del PC se puede encender o apagar la pantalla
-function loadInfo() { fetch(`${API}/info?k=${encodeURIComponent(key)}`).then(r => r.json()).then(i => {
+function loadInfo() { if (BT) return; fetch(`${API}/info?k=${encodeURIComponent(key)}`).then(r => r.json()).then(i => {
   screenLive = !!i.live; h264ok = !!i.h264;
   $('scrgo').hidden = $('scr').hidden = $('viewrow').hidden = !screenLive;
   syncScreen();
@@ -483,7 +505,7 @@ function tagText() { $('tag').textContent = player ? `Jugador ${player} · ${NAM
 
 function connect() {
   opened = false; full = false; player = 0;
-  ws = new WebSocket(`${WSB}/ws?k=${encodeURIComponent(key)}&type=${type}&c=${cid}`);
+  ws = BT ? new BtSocket(BT, key, type, cid) : new WebSocket(`${WSB}/ws?k=${encodeURIComponent(key)}&type=${type}&c=${cid}`);
   ws.onopen = () => { opened = true; retryUntil = 0; };
   ws.onmessage = e => {
     const m = JSON.parse(e.data);

@@ -36,7 +36,7 @@
   .ov.show { display:grid; }
   .box { width:min(100%,460px); max-height:100%; overflow-y:auto; background:var(--card); border:1px solid var(--line); border-radius:18px; padding:16px; }
   label { display:block; font-size:12.5px; color:var(--mut); margin:10px 0 4px; }
-  input { width:100%; font:inherit; color:var(--txt); background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:11px 12px; }
+  input, select { width:100%; font:inherit; color:var(--txt); background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:11px 12px; }
   .fields { display:grid; grid-template-columns:1fr 110px; gap:0 8px; }
   .f-pin { grid-column:1 / -1; }
   /* horizontal y bajito (con el teclado abierto): los tres campos en una sola fila */
@@ -60,6 +60,7 @@
     <div class="sub">Tu móvil como mando del PC, en la misma red</div>
     <button class="big pri" id="scanbtn">📷 Escanear código QR</button>
     <button class="big" id="findbtn">🔍 Buscar PC (cable USB, Bluetooth…)</button>
+    <button class="big" id="btbtn">🔷 Bluetooth directo (solo botones)</button>
     <button class="big" id="manualbtn">⌨ Escribir la dirección</button>
     <div id="status"></div>
   </section>
@@ -83,6 +84,16 @@
     <div class="f-pin"><label for="pin">PIN (en el panel del PC)</label><input id="pin" autocomplete="off" autocapitalize="none" placeholder="a1b2c3"></div>
   </div>
   <div class="row"><button class="big" id="manclose">Cancelar</button><button class="big pri" id="mango">Conectar</button></div>
+</div></div>
+
+<div class="ov" id="btov"><div class="box">
+  <h2>Bluetooth directo</h2>
+  <p class="hint">Solo botones: no se ve la pantalla del PC. Primero empareja el móvil con el PC (Ajustes de Bluetooth) y deja PC Remote abierto en el PC.</p>
+  <div class="fields">
+    <div class="f-ip"><label for="btdev">PC emparejado</label><select id="btdev"></select></div>
+    <div class="f-pin"><label for="btpin">PIN (en el panel del PC)</label><input id="btpin" autocomplete="off" autocapitalize="none" placeholder="a1b2c3"></div>
+  </div>
+  <div class="row"><button class="big" id="btclose">Cancelar</button><button class="big pri" id="btgo">Conectar</button></div>
 </div></div>
 
 <script src="jsQR.js"></script>
@@ -227,6 +238,26 @@ $('mango').onclick = () => {
   $('manov').classList.remove('show');
   const addr = `${ip}:${port}`, old = pcs.find(x => x.addr === addr);
   if (old) { old.pin = pin; connect(old); } else connect({ addr, pin, name: '' });
+};
+const BTP = () => window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.BtPad;
+$('btbtn').onclick = async () => {
+  const P = BTP(); if (!P) { say('El Bluetooth solo está en la app del móvil.', 'err'); return; }
+  try {
+    const r = await P.devices();
+    if (!r.enabled) { say('Activa el Bluetooth del móvil y vuelve a pulsar.', 'err'); return; }
+    if (!r.devices.length) { say('No hay dispositivos emparejados: empareja el móvil con el PC en los ajustes de Bluetooth.', 'err'); return; }
+    const last = localStorage.getItem('pcr_bt') || '';
+    $('btdev').innerHTML = r.devices.map(d => '<option value="' + d.address + '"' + (d.address === last ? ' selected' : '') + '>' + (d.name || d.address) + '</option>').join('');
+    $('btpin').value = localStorage.getItem('pcr_btpin') || '';
+    $('btov').classList.add('show');
+  } catch (e) { say('No se pudo usar el Bluetooth: ' + (e.message || e), 'err'); }
+};
+$('btclose').onclick = () => $('btov').classList.remove('show');
+$('btgo').onclick = () => {
+  const a = $('btdev').value, pin = $('btpin').value.trim();
+  if (!a || !pin) { say('Elige el PC y escribe el PIN.', 'err'); return; }
+  try { localStorage.setItem('pcr_bt', a); localStorage.setItem('pcr_btpin', pin); } catch (e) {}
+  location.href = 'pad.html?bt=' + encodeURIComponent(a) + '&k=' + encodeURIComponent(pin);
 };
 render();
 </script>

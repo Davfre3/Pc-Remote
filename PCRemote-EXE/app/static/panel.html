@@ -134,7 +134,7 @@ function render(s) {
   const cs = s.connections || [], ms = (s.missing || []).map(m => ({ ...m, id: 'm:' + m.kind, off: true }));
   const all = cs.concat(ms);
   if (!all.find(c => c.id === selConn)) selConn = all[0] ? all[0].id : null;
-  const cur = all.find(c => c.id === selConn), live = cur && !cur.off;
+  const cur = all.find(c => c.id === selConn), live = cur && !cur.off && !cur.nourl;
   const tabs = $('conns'), sig = all.map(c => c.id).join('|') + '#' + selConn;
   if (tabs.dataset.sig !== sig) {   // solo se redibuja si cambian las conexiones, para no parpadear
     tabs.dataset.sig = sig; tabs.innerHTML = '';
@@ -146,7 +146,7 @@ function render(s) {
   $('chint').textContent = cur ? (cur.off ? 'No detectada todavía. ' + cur.hint : cur.hint) : '';
   $('chint').style.whiteSpace = 'pre-line';
   if (cur && cur.off) $('chint').textContent = 'No detectada todavía:\n' + cur.steps;
-  $('url').textContent = live ? cur.web_url : 'Sigue los pasos de arriba: esta conexión se activa sola al detectarla';
+  $('url').textContent = live ? cur.web_url : (cur && cur.nourl ? 'Bluetooth: en el PC, Configuración > Bluetooth > Agregar dispositivo; después, en la app, pulsa «Bluetooth».' : 'Sigue los pasos de arriba: esta conexión se activa sola al detectarla');
   const n = s.players.filter(Boolean).length;
   $('status').classList.toggle('on', n > 0);
   $('stxt').textContent = n ? `${n} jugador${n > 1 ? 'es' : ''} conectado${n > 1 ? 's' : ''}` : 'Esperando móviles';

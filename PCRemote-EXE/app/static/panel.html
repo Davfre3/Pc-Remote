@@ -17,18 +17,19 @@
   .pill { margin-left:auto; display:flex; align-items:center; gap:8px; padding:7px 14px; border-radius:99px; background:var(--card); border:1px solid var(--line); font-weight:600; font-size:14px; }
   .dot { width:10px; height:10px; border-radius:50%; background:var(--mut); }
   .pill.on .dot { background:var(--ok); box-shadow:0 0 8px var(--ok); }
-  .grid { display:grid; grid-template-columns:minmax(260px,340px) 1fr; gap:18px; }
+  .grid { display:grid; grid-template-columns:minmax(280px,360px) 1fr; gap:18px; }
   @media (max-width:720px) { .grid { grid-template-columns:1fr; } }
   .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:20px; }
   .card h2 { margin:0 0 14px; font-size:13px; letter-spacing:.09em; text-transform:uppercase; color:var(--mut); font-weight:700; }
-  .qr { background:#fff; border-radius:14px; padding:10px; width:min(100%,260px); aspect-ratio:1; margin:0 auto 16px; display:grid; place-items:center; }
-  .qr img { width:100%; height:100%; display:block; }
-  ol { margin:0 0 16px; padding-left:20px; color:var(--mut); }
-  ol li { margin:4px 0; } ol b { color:var(--txt); font-weight:600; }
+  .cred { background:var(--card2); border:1px solid var(--line); border-radius:14px; padding:12px 16px; margin:0 0 10px; }
+  .cred .k { color:var(--mut); font-size:12px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:2px; }
+  .cred .v { font:700 17px/1.3 ui-monospace,Consolas,monospace; word-break:break-all; }
+  .cred .pin { font-size:34px; letter-spacing:.14em; color:var(--acc); }
   .addr { display:flex; gap:8px; align-items:center; background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:8px 8px 8px 12px; }
   .addr code { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; color:var(--mut); }
   button { font:inherit; cursor:pointer; border:0; color:var(--txt); }
   .btn { background:var(--acc); color:#fff; font-weight:700; font-size:13px; padding:8px 14px; border-radius:10px; }
+  .btn.alt { background:var(--card2); border:1px solid var(--line); color:var(--txt); }
   .btn:active { transform:scale(.97); }
   .players { display:grid; gap:10px; }
   .pl { display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:14px; background:var(--card2); border:1px solid var(--line); min-height:64px; }
@@ -53,14 +54,13 @@
   .kv dt { color:var(--mut); } .kv dd { margin:0; text-align:right; word-break:break-all; }
   #toast { position:fixed; left:50%; bottom:22px; transform:translate(-50%,20px); background:#000; border:1px solid var(--line); padding:9px 16px; border-radius:99px; opacity:0; transition:.2s; pointer-events:none; font-size:13px; }
   #toast.show { opacity:1; transform:translate(-50%,0); }
-  .err { color:var(--bad); }
-  .lbl2 { color:var(--mut); font-size:12px; margin:0 0 6px; }
+  .lbl2 { color:var(--mut); font-size:12px; margin:14px 0 6px; }
   .tabs { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px; }
   .tabs button { background:var(--card2); border:1px solid var(--line); border-radius:99px; padding:6px 12px; font-size:12.5px; font-weight:600; color:var(--mut); }
   .tabs button.cur { background:var(--acc); border-color:var(--acc); color:#fff; }
   .tabs button.offt { opacity:.6; border-style:dashed; }
-  .chint { color:var(--mut); font-size:12.5px; text-align:center; margin:-6px 0 14px; min-height:1.3em; }
-  .noconn { color:var(--warn); text-align:center; font-size:13.5px; padding:30px 8px; }
+  .chint { color:var(--mut); font-size:13px; margin:12px 0 0; min-height:1.3em; white-space:pre-line; }
+  .note { color:var(--mut); font-size:12.5px; margin:12px 0 0; }
 </style>
 </head>
 <body>
@@ -72,22 +72,22 @@
 
 <div class="grid">
   <section class="card">
-    <h2>Conectar un móvil</h2>
+    <h2>Conectar un móvil · hasta 6</h2>
     <div class="tabs" id="conns"></div>
-    <div class="qr"><img id="qr" alt="Código QR para conectar"></div>
+    <div class="cred"><div class="k" id="caddrk">Dirección del PC</div><div class="v" id="caddr">—</div></div>
+    <div class="cred"><div class="k">PIN</div><div class="v pin" id="cpin">—</div></div>
     <div class="chint" id="chint"></div>
-    <ol>
-      <li>Conecta el móvil al PC: <b>WiFi, cable USB o Bluetooth</b> (elige la pestaña).</li>
-      <li>Abre la app <b>PC Remote</b> y pulsa <b>Escanear</b>.</li>
-      <li>Elige tu mando y <b>juega</b>.</li>
-    </ol>
-    <div class="lbl2">Sin la app (navegador del móvil)</div>
-    <div class="addr"><code id="url"></code><button class="btn" id="copy">Copiar</button></div>
+    <button class="btn alt" id="btvis" hidden style="margin-top:12px">Hacer visible el PC por Bluetooth</button>
+    <div id="webbox">
+      <div class="lbl2">Sin la app (navegador del móvil)</div>
+      <div class="addr"><code id="url"></code><button class="btn" id="copy">Copiar</button></div>
+    </div>
   </section>
 
   <section class="card">
     <h2>Jugadores</h2>
     <div class="players" id="players"></div>
+    <p class="note">Cada móvil entra por la vía que le funcione (WiFi local, Bluetooth o cable) y todos juegan a la vez. Windows solo reconoce 4 mandos Xbox: los jugadores 5 y 6 se crean como mando PlayStation (DS4).</p>
   </section>
 </div>
 
@@ -102,8 +102,8 @@
   <section class="card">
     <h2>Conexión</h2>
     <dl class="kv">
-      <dt>Red</dt><dd id="via">—</dd>
-      <dt>Dirección</dt><dd id="addr">—</dd>
+      <dt>Vías abiertas</dt><dd id="via">—</dd>
+      <dt>Puerto</dt><dd id="addr">—</dd>
       <dt>PIN</dt><dd id="pin">—</dd>
       <dt>Giroscopio en navegador</dt><dd id="https">—</dd>
     </dl>
@@ -115,13 +115,21 @@
 const $ = id => document.getElementById(id), K = new URLSearchParams(location.search).get('k') || '';
 const q = p => p + (p.includes('?') ? '&' : '?') + 'k=' + encodeURIComponent(K);
 const KINDS = { xbox:'Xbox', ps4:'PlayStation', switch:'Switch' };
-let last = null, sure = {};
-function toast(t) { const e = $('toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 1800); }
+const STEPS = {
+  WiFi: 'En la app PC Remote pulsa «Buscar PC en mi WiFi» y escribe el PIN. También vale «Escribir dirección» con los datos de arriba.',
+  BTDirecto: '1) En la app pulsa «Bluetooth».\n2) Elige este PC en la lista (si no sale, pulsa el botón de abajo y busca de nuevo).\n3) Acepta el emparejamiento en el móvil y en el PC y escribe el PIN.',
+  ADB: 'En la app pulsa «Cable USB» y escribe el PIN.'
+};
+let last = null, sure = {}, selConn = null;
+function toast(t) { const e = $('toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 2200); }
 function mmss(s) { return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 
-let selConn = null, qrKey = '';
 const curConn = () => last && (last.connections || []).find(c => c.id === selConn);
 $('copy').onclick = () => { const c = curConn(); navigator.clipboard.writeText(c ? c.web_url : '').then(() => toast('Dirección copiada')).catch(() => toast('No se pudo copiar')); };
+$('btvis').onclick = async () => {
+  try { const r = await (await fetch(q('/panel/bluetooth'), { method:'POST' })).json(); toast(r.ok ? 'Deja abierta la pantalla de Bluetooth mientras el móvil busca' : 'No se pudo abrir Bluetooth'); }
+  catch (e) { toast('No se pudo abrir Bluetooth'); }
+};
 $('scr').onclick = async () => {
   if (!last) return;
   await fetch(q('/panel/screen'), { method:'POST', body:JSON.stringify({ on:!last.screen }) });
@@ -138,15 +146,23 @@ function render(s) {
   const tabs = $('conns'), sig = all.map(c => c.id).join('|') + '#' + selConn;
   if (tabs.dataset.sig !== sig) {   // solo se redibuja si cambian las conexiones, para no parpadear
     tabs.dataset.sig = sig; tabs.innerHTML = '';
-    all.forEach(c => { const b = document.createElement('button'); b.textContent = (c.off ? '○ ' : '') + c.name + (!c.off && cs.filter(x => x.kind === c.kind).length > 1 ? ' · ' + c.ip : '');
-      b.className = (c.id === selConn ? 'cur ' : '') + (c.off ? 'offt' : ''); b.onclick = () => { selConn = c.id; render(last); }; tabs.appendChild(b); });
+    all.forEach(c => {
+      const b = document.createElement('button');
+      b.textContent = (c.off ? '○ ' : '') + c.name + (!c.off && c.kind === 'WiFi' && cs.filter(x => x.kind === 'WiFi').length > 1 ? ' · ' + c.ip : '');
+      b.className = (c.id === selConn ? 'cur ' : '') + (c.off ? 'offt' : '');
+      b.onclick = () => { selConn = c.id; render(last); };
+      tabs.appendChild(b);
+    });
   }
-  const key = live ? cur.id + cur.url : '';
-  if (key !== qrKey) { qrKey = key; $('qr').style.visibility = live ? '' : 'hidden'; $('qr').style.display = live ? '' : 'none'; if (live) $('qr').src = q('/panel/qr.svg?i=' + encodeURIComponent(cur.id)) + '&t=' + Date.now(); }
-  $('chint').textContent = cur ? (cur.off ? 'No detectada todavía. ' + cur.hint : cur.hint) : '';
-  $('chint').style.whiteSpace = 'pre-line';
-  if (cur && cur.off) $('chint').textContent = 'No detectada todavía:\n' + cur.steps;
-  $('url').textContent = live ? cur.web_url : (cur && cur.nourl ? 'Bluetooth: en el PC, Configuración > Bluetooth > Agregar dispositivo; después, en la app, pulsa «Bluetooth».' : 'Sigue los pasos de arriba: esta conexión se activa sola al detectarla');
+  const bt = cur && cur.kind === 'BTDirecto';
+  $('caddrk').textContent = bt ? 'Nombre de este PC (sale en la lista Bluetooth)' : 'Dirección del PC';
+  $('caddr').textContent = !cur ? '—' : cur.off ? 'No detectada todavía' : bt ? (s.pc || 'Este PC') : cur.address;
+  $('cpin').textContent = s.pin || '—';
+  $('chint').textContent = !cur ? '' : cur.off ? 'No detectada todavía:\n' + cur.steps : cur.hint + '\n' + (STEPS[cur.kind] || '');
+  $('btvis').hidden = !bt;
+  $('webbox').hidden = !live || cur.kind === 'ADB';
+  $('url').textContent = live ? cur.web_url : '';
+
   const n = s.players.filter(Boolean).length;
   $('status').classList.toggle('on', n > 0);
   $('stxt').textContent = n ? `${n} jugador${n > 1 ? 'es' : ''} conectado${n > 1 ? 's' : ''}` : 'Esperando móviles';
@@ -158,7 +174,7 @@ function render(s) {
       const quiet = p.idle > 3, rtt = p.rtt;
       const cls = quiet ? 'bad' : rtt == null ? '' : rtt < 40 ? 'ok' : rtt < 100 ? 'warn' : 'bad';
       d.className = 'pl on';
-      d.innerHTML = `<div class="n">${p.slot}</div><div class="who"><b>Jugador ${p.slot} · ${KINDS[p.kind] || p.kind}</b><span>${p.ip} · conectado ${mmss(p.seconds)}</span></div>
+      d.innerHTML = `<div class="n">${p.slot}</div><div class="who"><b>Jugador ${p.slot} · ${KINDS[p.kind] || p.kind}</b><span>${p.via || ''}${p.via === 'WiFi' ? ' · ' + p.ip : ''} · conectado ${mmss(p.seconds)}</span></div>
         <span class="chip ${cls}">${quiet ? 'sin señal' : rtt == null ? '…' : rtt + ' ms'}</span><button class="kick">Expulsar</button>`;
       d.querySelector('.kick').onclick = async e => {
         const b = e.currentTarget;
@@ -170,8 +186,11 @@ function render(s) {
   });
   $('scr').classList.toggle('on', s.screen);
   $('enc').textContent = !s.screen ? 'Apagada: los móviles solo ven los botones'
-    : s.encoder ? `Encendida · vídeo H.264 (${s.encoder})` : 'Encendida · vídeo JPEG';
-  $('via').textContent = cs.length > 1 ? cs.length + ' conexiones disponibles' : (cur ? cur.name : s.via); $('addr').textContent = cur ? cur.address : '—'; $('https').textContent = s.https ? 'Disponible (https)' : 'No (usa la app)'; $('pin').textContent = s.pin || '—';
+    : s.encoder ? `Encendida · vídeo H.264 (${s.encoder}) · no llega por Bluetooth` : 'Encendida · vídeo JPEG · no llega por Bluetooth';
+  $('via').textContent = [...new Set(cs.map(c => c.name))].join(' · ') || '—';
+  $('addr').textContent = s.port || '—';
+  $('https').textContent = s.https ? 'Disponible (https)' : 'No (usa la app)';
+  $('pin').textContent = s.pin || '—';
 }
 async function refresh() {
   try { render(await (await fetch(q('/panel/state'))).json()); }

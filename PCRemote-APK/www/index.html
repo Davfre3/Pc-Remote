@@ -36,20 +36,32 @@
   .ov.show { display:grid; }
   .box { width:min(100%,460px); max-height:100%; overflow-y:auto; background:var(--card); border:1px solid var(--line); border-radius:18px; padding:16px; }
   label { display:block; font-size:12.5px; color:var(--mut); margin:10px 0 4px; }
-  input, select { width:100%; font:inherit; color:var(--txt); background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:11px 12px; }
+  input { width:100%; font:inherit; color:var(--txt); background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:11px 12px; }
   .fields { display:grid; grid-template-columns:1fr 110px; gap:0 8px; }
   .f-pin { grid-column:1 / -1; }
+  .fields.nomanual .f-ip, .fields.nomanual .f-port { display:none; }
+  .fields.nomanual .f-pin input { font-size:26px; letter-spacing:.18em; text-align:center; }
   /* horizontal y bajito (con el teclado abierto): los tres campos en una sola fila */
   @media (max-height:520px) and (min-width:560px) {
     .box { width:min(100%,680px); padding:10px 14px; }
     .fields { grid-template-columns:1.6fr .6fr 1fr; } .f-pin { grid-column:auto; }
+    .fields.nomanual { grid-template-columns:1fr; }
     label { margin:4px 0 2px; } input { padding:8px 10px; } .row { margin-top:8px; } .box h2 { margin-bottom:0; }
   }
   .row { display:flex; gap:8px; margin-top:14px; } .row button { flex:1; margin:0; }
-  #scan { position:relative; width:100%; aspect-ratio:4/3; max-height:62vh; background:#000; border-radius:14px; overflow:hidden; }
-  #scan video { width:100%; height:100%; object-fit:cover; }
-  #scan::after { content:""; position:absolute; inset:18%; border:3px solid rgba(255,255,255,.85); border-radius:16px; }
-  .hint { color:var(--mut); font-size:13px; text-align:center; margin:10px 0 0; }
+  .hint { color:var(--mut); font-size:13px; margin:8px 0 0; }
+  #btlist { margin-top:10px; max-height:46vh; overflow-y:auto; }
+  .dev { display:flex; align-items:center; gap:12px; width:100%; text-align:left; padding:11px 12px; margin-bottom:6px; border-radius:12px; background:var(--card2); border:1px solid var(--line); }
+  .dev .ic { font-size:24px; flex:none; }
+  .dev .nm { flex:1; min-width:0; }
+  .dev .nm b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dev .nm span { color:var(--mut); font-size:12.5px; }
+  .dev.pcdev { border-color:var(--acc); }
+  .dev:active { transform:scale(.99); }
+  #btstat { color:var(--mut); font-size:13.5px; margin-top:8px; min-height:1.4em; }
+  #btstat.err { color:var(--bad); }
+  .spin { display:inline-block; width:12px; height:12px; border:2px solid var(--mut); border-top-color:transparent; border-radius:50%; animation:r .8s linear infinite; vertical-align:-2px; margin-right:6px; }
+  @keyframes r { to { transform:rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -57,11 +69,11 @@
   <section class="hero">
     <div class="logo">🎮</div>
     <h1>PC Remote</h1>
-    <div class="sub">Tu móvil como mando del PC, en la misma red</div>
-    <button class="big pri" id="scanbtn">📷 Escanear código QR</button>
-    <button class="big" id="findbtn">🔍 Buscar PC (cable USB, Bluetooth…)</button>
-    <button class="big" id="btbtn">🔷 Bluetooth directo (solo botones)</button>
-    <button class="big" id="manualbtn">⌨ Escribir la dirección</button>
+    <div class="sub">Tu móvil como mando del PC · WiFi, Bluetooth o cable</div>
+    <button class="big pri" id="findbtn">📶 Buscar PC en mi WiFi</button>
+    <button class="big" id="btbtn">🔷 Bluetooth</button>
+    <button class="big" id="usbbtn">🔌 Cable USB</button>
+    <button class="big" id="manualbtn">⌨ Escribir dirección y PIN</button>
     <div id="status"></div>
   </section>
   <section>
@@ -70,15 +82,9 @@
   </section>
 </div>
 
-<div class="ov" id="scanov"><div class="box">
-  <div id="scan"><video id="vid" playsinline muted></video></div>
-  <p class="hint" id="scanmsg">Apunta al código QR que sale en el panel de PC Remote del ordenador</p>
-  <div class="row"><button class="big" id="scanclose">Cancelar</button></div>
-</div></div>
-
 <div class="ov" id="manov"><div class="box">
-  <h2>Conectar con el PC</h2>
-  <div class="fields">
+  <h2 id="mantitle">Conectar con el PC</h2>
+  <div class="fields" id="manfields">
     <div class="f-ip"><label for="ip">Dirección (IP) del PC</label><input id="ip" inputmode="decimal" placeholder="192.168.1.20" autocomplete="off"></div>
     <div class="f-port"><label for="port">Puerto</label><input id="port" inputmode="numeric" value="8765"></div>
     <div class="f-pin"><label for="pin">PIN (en el panel del PC)</label><input id="pin" autocomplete="off" autocapitalize="none" placeholder="a1b2c3"></div>
@@ -87,60 +93,78 @@
 </div></div>
 
 <div class="ov" id="btov"><div class="box">
-  <h2>Bluetooth directo</h2>
-  <p class="hint">Solo botones: no se ve la pantalla del PC. Primero empareja el móvil con el PC (Ajustes de Bluetooth) y deja PC Remote abierto en el PC.</p>
-  <div class="fields">
-    <div class="f-ip"><label for="btdev">PC emparejado</label><select id="btdev"></select></div>
-    <div class="f-pin"><label for="btpin">PIN (en el panel del PC)</label><input id="btpin" autocomplete="off" autocapitalize="none" placeholder="a1b2c3"></div>
-  </div>
-  <div class="row"><button class="big" id="btclose">Cancelar</button><button class="big pri" id="btgo">Conectar</button></div>
+  <h2>Bluetooth</h2>
+  <p class="hint">Elige tu PC. En el PC deja abierto PC Remote y, si no aparece, abre Configuración > Bluetooth (el panel tiene un botón para eso).</p>
+  <div id="btstat"></div>
+  <div id="btlist"></div>
+  <div class="row"><button class="big" id="btclose">Cerrar</button><button class="big pri" id="btagain">Buscar de nuevo</button></div>
 </div></div>
 
-<script src="jsQR.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const KEY = 'pcr_pcs';
+const KEY = 'pcr_pcs', BT_UUID = '7a1f2b64-3c5d-4e8a-9b10-5043524d4f54';
 let pcs = [];
 try { pcs = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) {}
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(pcs)); } catch (e) {} };
 const say = (t, cls = '') => { $('status').textContent = t; $('status').className = cls; };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+const errText = e => (e && (e.message || e.errorMessage)) || String(e || 'error');
+const BTP = () => window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.BtPad;
+const timeout = ms => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
 
 function render() {
   const L = $('list');
   if (!pcs.length) {
     L.innerHTML = `<div class="empty"><b>Aún no hay ningún PC.</b><ol>
-      <li>Abre <b>PC Remote</b> en tu ordenador.</li><li>Pulsa <b>Escanear código QR</b> y apunta a la pantalla.</li>
-      <li>El móvil y el PC deben estar en la <b>misma red WiFi</b>.</li></ol></div>`;
+      <li>Abre <b>PC Remote</b> en tu ordenador y mira el <b>PIN</b> del panel.</li>
+      <li>Pulsa <b>Buscar PC en mi WiFi</b>, <b>Bluetooth</b> o <b>Cable USB</b>.</li>
+      <li>Elige tu PC, escribe el PIN y <b>juega</b>.</li></ol></div>`;
     return;
   }
   L.innerHTML = '';
   [...pcs].sort((a, b) => (b.last || 0) - (a.last || 0)).forEach(p => {
     const d = document.createElement('div'); d.className = 'pc';
-    d.innerHTML = `<div class="ic">🖥</div><div class="nm"><b>${esc(p.name || 'Mi PC')}</b><span>${esc(p.addr)}</span></div>
+    d.innerHTML = `<div class="ic">${p.bt ? '🔷' : '🖥'}</div><div class="nm"><b>${esc(p.name || 'Mi PC')}</b><span>${p.bt ? 'Bluetooth' : esc(p.addr)}</span></div>
       <button class="go">Jugar</button><button class="rm" aria-label="Quitar">✕</button>`;
-    d.querySelector('.go').onclick = () => connect(p);
-    d.querySelector('.rm').onclick = () => { if (confirm('¿Quitar "' + (p.name || p.addr) + '" de la lista?')) { pcs = pcs.filter(x => x !== p); save(); render(); } };
+    d.querySelector('.go').onclick = () => p.bt ? btPlay(p) : connect(p);
+    d.querySelector('.rm').onclick = () => { if (confirm('¿Quitar "' + (p.name || p.addr || 'este PC') + '" de la lista?')) { pcs = pcs.filter(x => x !== p); save(); render(); } };
     L.appendChild(d);
   });
 }
 
-const timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
+// ---- credenciales: dirección (si hace falta) y PIN ----
+let askCb = null;
+function ask({ title, ip = '', port = '8765', pin = '', manual = false }, cb) {
+  $('mantitle').textContent = title;
+  $('manfields').classList.toggle('nomanual', !manual);
+  $('ip').value = ip; $('port').value = port; $('pin').value = pin;
+  askCb = cb; $('manov').classList.add('show');
+  setTimeout(() => $(manual && !ip ? 'ip' : 'pin').focus(), 150);
+}
+$('manclose').onclick = () => { $('manov').classList.remove('show'); askCb = null; };
+$('mango').onclick = () => {
+  const ip = $('ip').value.trim(), port = $('port').value.trim() || '8765', pin = $('pin').value.trim();
+  if (!/^[\w.\-]+$/.test(ip) || !/^\d{2,5}$/.test(port) || !pin) { say('Escribe la dirección, el puerto y el PIN.', 'err'); return; }
+  const cb = askCb; $('manov').classList.remove('show'); askCb = null;
+  if (cb) cb(`${ip}:${port}`, pin);
+};
+for (const id of ['ip', 'port', 'pin']) $(id).addEventListener('focus', () => setTimeout(() => $(id).scrollIntoView({ block:'center' }), 300));
+$('pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('mango').click(); });
 
 // Comprueba que la direccion es un PC Remote y que el PIN vale; si todo va bien guarda el PC y abre el mando
 async function connect(p) {
   say('Conectando con ' + (p.name || p.addr) + '…');
   let hello = null;
-  for (const a of [p.addr, ...(p.alts || [])]) {   // la direccion de siempre y, si no, las otras con las que ya conecto (cable, WiFi…)
+  for (const a of [p.addr, ...(p.alts || [])]) {   // la direccion de siempre y, si no, las otras con las que ya conecto
     try { hello = await (await fetch(`http://${a}/hello`, { signal: timeout(a === p.addr ? 4500 : 1500), cache: 'no-store' })).json(); } catch (e) { continue; }
     if (a !== p.addr) { p.alts = [p.addr, ...(p.alts || [])].filter((x, i, l) => x !== a && l.indexOf(x) === i).slice(0, 6); p.addr = a; }
     break;
   }
-  if (!hello) { say('No se encuentra el PC. Comprueba que PC Remote está abierto y que el móvil está conectado por WiFi, cable USB o Bluetooth (el firewall de Windows puede pedir permiso la primera vez). También puedes probar «Buscar PC».', 'err'); return; }
-  if (!hello || hello.app !== 'pcremote') { say('Esa dirección no es un PC Remote.', 'err'); return; }
+  if (!hello) { say('No se encuentra el PC. Comprueba que PC Remote está abierto y que el móvil está en la misma WiFi (el firewall de Windows puede pedir permiso la primera vez).', 'err'); return; }
+  if (hello.app !== 'pcremote') { say('Esa dirección no es un PC Remote.', 'err'); return; }
   try {
     const r = await fetch(`http://${p.addr}/info?k=${encodeURIComponent(p.pin)}`, { signal: timeout(4500), cache: 'no-store' });
-    if (r.status === 403) { say('El PIN no es correcto. Escanea de nuevo el código QR del panel.', 'err'); return; }
+    if (r.status === 403) { say('El PIN no es correcto.', 'err'); ask({ title: 'PIN incorrecto: míralo en el panel del PC', ip: p.addr.split(':')[0], port: p.addr.split(':')[1], pin: '' }, (addr, pin) => { p.pin = pin; connect(p); }); return; }
     if (!r.ok) throw 0;
   } catch (e) { say('El PC no respondió. Inténtalo otra vez.', 'err'); return; }
   p.name = hello.name || p.name; p.last = Date.now();
@@ -149,51 +173,19 @@ async function connect(p) {
   location.href = `pad.html?srv=${encodeURIComponent(p.addr)}&k=${encodeURIComponent(p.pin)}`;
 }
 
-// Direccion del QR del panel: http://IP:PUERTO/?k=PIN
-function fromUrl(text) {
-  try {
-    const u = new URL(text.trim()), k = u.searchParams.get('k');
-    if (!/^https?:$/.test(u.protocol) || !u.hostname || !k) return null;
-    const port = u.protocol === 'https:' && u.port ? +u.port - 1 : (u.port || 8765);   // el https del navegador va en puerto + 1
-    return { addr: `${u.hostname}:${port}`, pin: k, name: '' };
-  } catch (e) { return null; }
-}
-
-// ---- escaner de QR con la camara (jsQR) ----
-let stream = null, scanning = false;
-async function startScan() {
-  $('scanmsg').textContent = 'Apunta al código QR que sale en el panel de PC Remote del ordenador';
-  $('scanov').classList.add('show');
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-  } catch (e) {
-    $('scanmsg').textContent = 'No se pudo abrir la cámara. Da permiso a la app o usa «Escribir la dirección».';
-    return;
+// PC encontrado (WiFi o cable): si ya lo conocemos se reconecta solo; si no, se pide su PIN
+function found(addr, name) {
+  const saved = pcs.find(p => !p.bt && ((name && p.name === name) || p.addr === addr));
+  if (saved) {
+    if (saved.addr !== addr) saved.alts = [saved.addr, ...(saved.alts || [])].filter((a, i, l) => a !== addr && l.indexOf(a) === i).slice(0, 6);
+    saved.addr = addr; save(); connect(saved); return;
   }
-  const v = $('vid'); v.srcObject = stream; await v.play().catch(() => {});
-  scanning = true;
-  const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
-  (function tick() {
-    if (!scanning) return;
-    if (v.videoWidth) {
-      const s = Math.min(1, 640 / v.videoWidth); cv.width = v.videoWidth * s; cv.height = v.videoHeight * s;
-      cx.drawImage(v, 0, 0, cv.width, cv.height);
-      const code = jsQR(cx.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height, { inversionAttempts: 'dontInvert' });
-      if (code) {
-        const p = fromUrl(code.data);
-        if (p) { stopScan(); const old = pcs.find(x => x.addr === p.addr); if (old) { old.pin = p.pin; connect(old); } else connect(p); return; }
-        $('scanmsg').textContent = 'Ese código no es de PC Remote. Usa el que sale en el panel del PC.';
-      }
-    }
-    setTimeout(tick, 120);
-  })();
-}
-function stopScan() {
-  scanning = false; $('scanov').classList.remove('show');
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  say('PC encontrado: ' + (name || addr) + '. Escribe su PIN.', 'ok');
+  const [ip, port] = addr.split(':');
+  ask({ title: 'Conectar con ' + (name || ip), ip, port }, (a, pin) => connect({ addr: a, pin, name: name || '' }));
 }
 
-// ---- buscar el PC sin QR: cable con depuracion (localhost), anclajes USB / Bluetooth / zona WiFi y las redes de mis PC ----
+// ---- buscar el PC en la WiFi (sin QR): se prueban las direcciones de la red del movil ----
 let finding = false;
 async function probe(addr, ms) {
   try { const j = await (await fetch(`http://${addr}/hello`, { signal: timeout(ms), cache: 'no-store' })).json(); return j && j.app === 'pcremote' ? j : null; }
@@ -201,64 +193,122 @@ async function probe(addr, ms) {
 }
 async function findPc() {
   if (finding) return; finding = true;
-  const port = 8765, cand = [`localhost:${port}`];
-  const nets = new Set(['192.168.42', '192.168.44', '192.168.43', '192.168.0', '192.168.1']);   // USB, Bluetooth, zona WiFi, redes comunes
-  const known = pcs.flatMap(p => [p.addr, ...(p.alts || [])]);   // direcciones con las que ya funciono (WiFi, cable…)
-  known.forEach(a => { const m = /^(d+.d+.d+).d+:/.exec(a); if (m) nets.add(m[1]); });
-  known.forEach(a => { if (!cand.includes(a)) cand.push(a); });
-  for (const n of nets) for (let i = 1; i < 255; i++) { const a = `${n}.${i}:${port}`; if (!cand.includes(a)) cand.push(a); }
-  const found = []; let done = 0, next = 0;
-  const tick = () => say(`Buscando el PC… ${Math.round(done * 100 / cand.length)}%` + (found.length ? ` · encontrado` : ''));
+  const port = 8765, cand = [];
+  const add = a => { if (!cand.includes(a)) cand.push(a); };
+  pcs.filter(p => !p.bt).forEach(p => [p.addr, ...(p.alts || [])].forEach(add));   // direcciones con las que ya funciono
+  const nets = [];
+  const P = BTP();
+  if (P) { try { (await P.localIps()).ips.forEach(ip => nets.push(ip.split('.').slice(0, 3).join('.'))); } catch (e) {} }   // la red de este movil
+  pcs.filter(p => !p.bt).forEach(p => { const m = /^(\d+\.\d+\.\d+)\.\d+:/.exec(p.addr); if (m) nets.push(m[1]); });
+  if (!nets.length) nets.push('192.168.0', '192.168.1', '192.168.43', '192.168.100', '10.0.0');   // sin saber la red: las mas comunes
+  for (const n of [...new Set(nets)]) for (let i = 1; i < 255; i++) add(`${n}.${i}:${port}`);
+  const hit = []; let done = 0, next = 0;
+  const tick = () => say(`Buscando el PC en la WiFi… ${Math.round(done * 100 / cand.length)}%`);
   tick();
   const worker = async () => {
-    while (next < cand.length && !found.length) {
-      const a = cand[next++], j = await probe(a, a.startsWith('localhost') ? 1500 : 700);
-      done++; if (j) found.push({ addr: a, name: j.name }); if (done % 20 === 0) tick();
+    while (next < cand.length && !hit.length) {
+      const a = cand[next++], j = await probe(a, 700);
+      done++; if (j) hit.push({ addr: a, name: j.name }); if (done % 20 === 0) tick();
     }
   };
   await Promise.all(Array.from({ length: 48 }, worker));
   finding = false;
-  if (!found.length) { say('No se encontró ningún PC. Comprueba que PC Remote está abierto y que el móvil está conectado por cable, Bluetooth o WiFi; o escanea el QR del panel.', 'err'); return; }
-  const f = found[0], saved = pcs.find(p => p.name && p.name === f.name) || pcs.find(p => p.addr === f.addr);
-  if (saved) {
-    if (saved.addr !== f.addr) saved.alts = [saved.addr, ...(saved.alts || [])].filter((a, i, l) => a !== f.addr && l.indexOf(a) === i).slice(0, 6);
-    saved.addr = f.addr; save(); connect(saved); return;
-  }   // el mismo PC con otra direccion: se reconecta solo
-  say('PC encontrado: ' + (f.name || f.addr) + '. Escribe su PIN.', 'ok');
-  const [ip, port2] = f.addr.split(':'); $('ip').value = ip; $('port').value = port2; $('manov').classList.add('show'); $('pin').focus();
+  if (!hit.length) { say('No se encontró ningún PC. Comprueba que PC Remote está abierto y que el móvil está en la misma WiFi que el PC; o usa «Escribir dirección y PIN».', 'err'); return; }
+  found(hit[0].addr, hit[0].name);
 }
 $('findbtn').onclick = findPc;
-$('scanbtn').onclick = startScan; $('scanclose').onclick = stopScan;
-$('manualbtn').onclick = () => { $('manov').classList.add('show'); $('ip').focus(); };
-for (const id of ['ip', 'port', 'pin']) $(id).addEventListener('focus', () => setTimeout(() => $(id).scrollIntoView({ block:'center' }), 300));
-$('manclose').onclick = () => $('manov').classList.remove('show');
-$('mango').onclick = () => {
-  const ip = $('ip').value.trim(), port = $('port').value.trim() || '8765', pin = $('pin').value.trim();
-  if (!/^[\w.\-]+$/.test(ip) || !/^\d{2,5}$/.test(port) || !pin) { say('Escribe la dirección, el puerto y el PIN.', 'err'); return; }
-  $('manov').classList.remove('show');
-  const addr = `${ip}:${port}`, old = pcs.find(x => x.addr === addr);
-  if (old) { old.pin = pin; connect(old); } else connect({ addr, pin, name: '' });
+
+// ---- cable USB (depuracion USB): el PC abre localhost:8765 en el movil ----
+$('usbbtn').onclick = async () => {
+  say('Buscando el PC por el cable…');
+  const j = await probe('localhost:8765', 2500);
+  if (!j) { say('No se encuentra el PC por cable. Conecta el cable, activa «Depuración USB» en el móvil, acepta el aviso y abre PC Remote en el PC.', 'err'); return; }
+  found('localhost:8765', j.name);
 };
-const BTP = () => window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.BtPad;
-$('btbtn').onclick = async () => {
-  const P = BTP(); if (!P) { say('El Bluetooth solo está en la app del móvil.', 'err'); return; }
+
+$('manualbtn').onclick = () => ask({ title: 'Conectar con el PC', manual: true }, (addr, pin) => {
+  const old = pcs.find(x => x.addr === addr);
+  if (old) { old.pin = pin; connect(old); } else connect({ addr, pin, name: '' });
+});
+
+// ---- Bluetooth: escaner de dispositivos cercanos, como en PC Remote ----
+let btDevs = new Map(), btHandles = [], btScanning = false;
+function btStatus(t, err, busy) { $('btstat').className = err ? 'err' : ''; $('btstat').innerHTML = (busy ? '<span class="spin"></span>' : '') + esc(t); }
+function drawBt() {
+  const list = [...btDevs.values()].sort((a, b) => (!!b.computer - !!a.computer) || (!!b.paired - !!a.paired) || String(a.name || '').localeCompare(String(b.name || '')));
+  $('btlist').innerHTML = '';
+  list.forEach(d => {
+    const b = document.createElement('button'); b.className = 'dev' + (d.computer ? ' pcdev' : '');
+    b.innerHTML = `<div class="ic">${d.computer ? '🖥' : '📱'}</div><div class="nm"><b>${esc(d.name || d.address)}</b><span>${d.computer ? 'Ordenador · ' : ''}${d.paired ? 'Emparejado' : 'Nuevo: se empareja al tocarlo'}</span></div>`;
+    b.onclick = () => btPick(d);
+    $('btlist').appendChild(b);
+  });
+}
+async function btClearListeners() { btHandles.forEach(h => { try { h.remove(); } catch (e) {} }); btHandles = []; }
+async function btScan() {
+  const P = BTP(); if (!P) return;
+  await btClearListeners();
+  btHandles.push(await P.addListener('found', d => {
+    const old = btDevs.get(d.address) || {};
+    btDevs.set(d.address, { ...old, ...d, name: d.name || old.name, paired: d.paired || old.paired, computer: d.computer || old.computer });
+    drawBt();
+  }));
+  btHandles.push(await P.addListener('scanEnd', () => { btScanning = false; btStatus(btDevs.size ? 'Toca tu PC. Si no aparece, pulsa «Buscar de nuevo».' : 'No se encontró ningún dispositivo. Abre Configuración > Bluetooth en el PC y pulsa «Buscar de nuevo».', !btDevs.size); }));
+  try { await P.scan(); btScanning = true; btStatus('Buscando dispositivos cercanos…', false, true); }
+  catch (e) { btStatus(errText(e), true); }
+}
+async function openBt() {
+  const P = BTP();
+  if (!P) { say('El Bluetooth solo está en la app del móvil.', 'err'); return; }
+  btDevs = new Map(); drawBt(); $('btov').classList.add('show'); btStatus('Preparando…', false, true);
   try {
     const r = await P.devices();
-    if (!r.enabled) { say('Activa el Bluetooth del móvil y vuelve a pulsar.', 'err'); return; }
-    if (!r.devices.length) { say('No hay dispositivos emparejados: empareja el móvil con el PC en los ajustes de Bluetooth.', 'err'); return; }
-    const last = localStorage.getItem('pcr_bt') || '';
-    $('btdev').innerHTML = r.devices.map(d => '<option value="' + d.address + '"' + (d.address === last ? ' selected' : '') + '>' + (d.name || d.address) + '</option>').join('');
-    $('btpin').value = localStorage.getItem('pcr_btpin') || '';
-    $('btov').classList.add('show');
-  } catch (e) { say('No se pudo usar el Bluetooth: ' + (e.message || e), 'err'); }
-};
-$('btclose').onclick = () => $('btov').classList.remove('show');
-$('btgo').onclick = () => {
-  const a = $('btdev').value, pin = $('btpin').value.trim();
-  if (!a || !pin) { say('Elige el PC y escribe el PIN.', 'err'); return; }
-  try { localStorage.setItem('pcr_bt', a); localStorage.setItem('pcr_btpin', pin); } catch (e) {}
-  location.href = 'pad.html?bt=' + encodeURIComponent(a) + '&k=' + encodeURIComponent(pin);
-};
+    if (!r.enabled) { btStatus('Activa el Bluetooth del móvil y pulsa «Buscar de nuevo».', true); return; }
+    r.devices.forEach(d => btDevs.set(d.address, d)); drawBt();
+  } catch (e) { btStatus(errText(e), true); return; }
+  btScan();
+}
+$('btbtn').onclick = openBt;
+$('btagain').onclick = () => { const P = BTP(); if (P) { P.stopScan().catch(() => {}); } btScan(); };
+$('btclose').onclick = async () => { const P = BTP(); if (P) { P.stopScan().catch(() => {}); P.close().catch(() => {}); } await btClearListeners(); $('btov').classList.remove('show'); };
+
+async function btPick(d) {
+  const P = BTP(); P.stopScan().catch(() => {});
+  if (!d.paired) {
+    btStatus('Emparejando con ' + (d.name || d.address) + '… acepta el aviso en el móvil y en el PC', false, true);
+    try { await P.pair({ address: d.address }); d.paired = true; drawBt(); } catch (e) { btStatus(errText(e), true); return; }
+  }
+  const known = pcs.find(x => x.bt === d.address);
+  if (known && known.pin) { btProbe({ ...known, name: d.name || known.name }); return; }
+  btStatus('');
+  ask({ title: 'Conectar con ' + (d.name || 'el PC') + ' por Bluetooth' }, (a, pin) => btProbe({ bt: d.address, name: d.name || '', pin }));
+}
+
+// Se comprueba el canal y el PIN antes de abrir el mando (el PC contesta y cierra sin crear jugador)
+async function btProbe(p) {
+  const P = BTP();
+  btStatus('Conectando con ' + (p.name || 'el PC') + '…', false, true);
+  const h = await P.addListener('status', e => btStatus(e.text, false, true));
+  try {
+    await P.open({ address: p.bt, uuid: BT_UUID, hello: JSON.stringify({ k: p.pin, probe: true }) });
+  } catch (e) {
+    h.remove();
+    const m = errText(e);
+    btStatus(m, true);
+    if (/PIN/.test(m)) { delete p.pin; ask({ title: 'PIN incorrecto: míralo en el panel del PC' }, (a, pin) => btProbe({ ...p, pin })); }
+    return;
+  }
+  h.remove(); await P.close().catch(() => {});
+  p.last = Date.now();
+  const old = pcs.find(x => x.bt === p.bt); if (old) Object.assign(old, p); else pcs.push(p);
+  save(); btStatus('Conectado', false);
+  await btClearListeners();
+  setTimeout(() => btPlay(p), 600);
+}
+function btPlay(p) {
+  const P = BTP(); if (P) P.close().catch(() => {});
+  location.href = 'pad.html?bt=' + encodeURIComponent(p.bt) + '&k=' + encodeURIComponent(p.pin) + '&n=' + encodeURIComponent(p.name || '');
+}
 render();
 </script>
 </body>

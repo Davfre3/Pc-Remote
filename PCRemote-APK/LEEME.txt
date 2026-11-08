@@ -6,13 +6,14 @@ Resultado:  dist\PC-Remote.apk   (copialo al movil e instalalo; hay que permitir
 Volver a crearlo:   crear_apk.bat   (necesita Node, JDK 21 y el SDK de Android)
 Si cambias el mando en PCRemote-EXE\app\static\index.html:  npm run sync   y luego crear_apk.bat
 
-www\index.html   pantalla de la app: escanear QR, escribir direccion, lista de mis PC
+www\index.html   pantalla de la app: buscar PC en la WiFi, Bluetooth (escaner), cable USB, escribir direccion, lista de mis PC
 www\pad.html     el mando (copia automatica de PCRemote-EXE\app\static\index.html)
-android\         proyecto nativo (pantalla completa horizontal, pantalla siempre encendida, camara para el QR)
+android\         proyecto nativo (pantalla completa horizontal, pantalla siempre encendida, plugin Bluetooth BtPad.java)
 
 El APK esta firmado con la clave de depuracion: sirve para instalarlo en tus moviles.
 Para Google Play hace falta un keystore propio y un APK/AAB "release".
 
 CONECTAR
-  Escanear QR (cualquier via)  .  Buscar PC (cable con depuracion, anclajes USB / Bluetooth / zona WiFi y las redes de tus PC)
-  .  Escribir la direccion.  Cada PC guarda las direcciones que le funcionaron y prueba la otra si una falla.
+  Buscar PC en mi WiFi (rastrea la red del movil)  .  Bluetooth (busca dispositivos cercanos, empareja y conecta)
+  .  Cable USB (depuracion USB)  .  Escribir direccion y PIN.  En todos hace falta el PIN que sale en el panel del PC.
+  Cada PC se guarda en «Mis PC» con su PIN.

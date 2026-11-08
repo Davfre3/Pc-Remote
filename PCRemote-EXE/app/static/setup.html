@@ -16,14 +16,13 @@
   .sub { color:var(--mut); }
   h2 { margin:26px 0 12px; font-size:13px; letter-spacing:.09em; text-transform:uppercase; color:var(--mut); font-weight:700; }
   .vias { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px; }
-  .via { text-align:left; display:flex; gap:14px; align-items:flex-start; padding:16px; border-radius:16px; background:var(--card); border:2px solid var(--line); font:inherit; color:var(--txt); cursor:pointer; transition:border-color .12s, opacity .12s; }
+  .via { text-align:left; display:flex; gap:14px; align-items:flex-start; padding:16px; border-radius:16px; background:var(--card); border:2px solid var(--line); font:inherit; color:var(--txt); cursor:default; transition:opacity .12s; }
   .via .ic { font-size:30px; line-height:1; flex:none; margin-top:2px; }
   .via b { display:block; font-size:16px; }
   .via .st { font-size:13px; font-weight:700; margin:2px 0 4px; color:var(--mut); }
   .via .st.ok { color:var(--ok); }
   .via .hp { font-size:12.5px; color:var(--mut); }
-  .via.off { opacity:.55; cursor:default; }
-  .via.sel { border-color:var(--acc); background:var(--card2); box-shadow:0 0 0 3px rgba(79,140,255,.18); }
+  .via.off { opacity:.6; }
   .opts { display:grid; gap:10px; }
   .opt { display:flex; align-items:center; gap:14px; padding:14px 16px; border-radius:16px; background:var(--card); border:1px solid var(--line); }
   .opt .t { flex:1; } .opt .t b { display:block; } .opt .t span { color:var(--mut); font-size:13px; }
@@ -49,7 +48,7 @@
   <div class="sub" id="pc">Convierte tu móvil en un mando para este PC</div>
 </header>
 
-<h2>¿Cómo conectas el móvil?</h2>
+<h2>Vías de conexión (se abren todas a la vez, hasta 6 móviles)</h2>
 <div class="vias" id="vias"></div>
 
 <h2>Opciones</h2>
@@ -58,39 +57,30 @@
   <div class="opt" id="httpsrow"><div class="t"><b>Giroscopio en el navegador (HTTPS)</b><span id="httpsdesc">Solo si usas el navegador en vez de la app. La app de PC Remote no lo necesita.</span></div><button class="sw" id="https" aria-label="HTTPS"></button></div>
 </div>
 
-<button class="go" id="go" disabled>Iniciar</button>
+<button class="go" id="go">Iniciar</button>
 <div class="note" id="note"><span class="spin"></span>Buscando conexiones…</div>
 
 <div id="busy"><div><div class="spin"></div><div id="busytxt">Iniciando…</div></div></div>
 
 <script>
 const $ = id => document.getElementById(id), K = new URLSearchParams(location.search).get('k') || '';
-const ICONS = { wifi:'📶', usb:'🔌', bluetooth:'🔷', adb:'🛠' };
-let st = null, sel = null, scr = true, https = true, userPicked = false, started = false;
+const ICONS = { wifi:'📶', bluetooth:'🔷', adb:'🔌' };
+let st = null, scr = true, https = true, started = false;
 
 function paint() {
   if (!st) return;
-  const detected = st.vias.filter(v => v.detected);
-  if (sel && !detected.some(v => v.id === sel)) sel = null;
-  if (!sel && !userPicked) sel = (detected.find(v => v.id === st.saved.via) || detected[0] || {}).id || null;
   $('vias').innerHTML = '';
   for (const v of st.vias) {
-    const b = document.createElement('button');
-    b.className = 'via' + (v.detected ? '' : ' off') + (v.id === sel ? ' sel' : '');
-    b.innerHTML = `<div class="ic">${ICONS[v.id]}</div><div><b>${v.name}</b><div class="st ${v.detected ? 'ok' : ''}">${v.detected ? '● Detectada' + (v.id === 'adb' ? '' : ' · ' + v.ip) : '○ No detectada'}</div><div class="hp">${v.help}</div></div>`;
-    if (v.detected) b.onclick = () => { sel = v.id; userPicked = true; paint(); };
+    const b = document.createElement('div');
+    b.className = 'via' + (v.detected ? '' : ' off');
+    b.innerHTML = `<div class="ic">${ICONS[v.id]}</div><div><b>${v.name}</b><div class="st ${v.detected ? 'ok' : ''}">${v.detected ? '● Lista' + (v.ip ? ' · ' + v.ip : '') : '○ Aún no detectada (se activa sola al detectarla)'}</div><div class="hp">${v.help}</div></div>`;
     $('vias').appendChild(b);
   }
   $('scr').classList.toggle('on', scr);
-  const adb = sel === 'adb';
-  $('httpsrow').classList.toggle('dis', adb);
-  $('https').classList.toggle('on', https && !adb);
-  $('https').disabled = adb;
-  $('httpsdesc').textContent = adb ? 'No hace falta por cable: el móvil abre localhost, que ya es seguro.'
-    : 'Solo si usas el navegador del móvil en vez de la app. La app de PC Remote no lo necesita.';
-  $('encdesc').textContent = st.encoder ? `Se ve detrás de los botones · vídeo H.264 (${st.encoder})` : 'Se ve detrás de los botones del mando';
-  $('go').disabled = !sel || started;
-  $('note').innerHTML = sel ? '' : (detected.length ? 'Elige una conexión' : '<span class="spin"></span>Buscando conexiones… conecta el móvil a la misma red o con cable');
+  $('https').classList.toggle('on', https);
+  $('encdesc').textContent = st.encoder ? `Se ve detrás de los botones (solo por WiFi) · vídeo H.264 (${st.encoder})` : 'Se ve detrás de los botones del mando (solo por WiFi)';
+  $('go').disabled = started;
+  $('note').textContent = '';
   $('pc').textContent = 'Convierte tu móvil en un mando para ' + (st.pc || 'este PC');
 }
 async function poll() {
@@ -104,9 +94,9 @@ async function poll() {
 $('scr').onclick = () => { scr = !scr; paint(); };
 $('https').onclick = () => { https = !https; paint(); };
 $('go').onclick = async () => {
-  if (!sel || started) return;
+  if (started) return;
   started = true; $('busy').classList.add('show');
-  const r = await fetch('/setup/start?k=' + K, { method:'POST', body:JSON.stringify({ via:sel, https, pantalla:scr }) });
+  const r = await fetch('/setup/start?k=' + K, { method:'POST', body:JSON.stringify({ https, pantalla:scr }) });
   const { panel_url } = await r.json();
   // El servidor tarda un poco en arrancar: se espera a que conteste y entonces esta misma ventana pasa al panel
   for (let i = 0; i < 100; i++) {

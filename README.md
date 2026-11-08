@@ -1,7 +1,8 @@
 # PC Remote
 
-Convierte tu móvil en un mando de Xbox / PlayStation / Switch para tu PC con Windows, por la **red local**
-(WiFi), **cable USB**, **Bluetooth** (anclaje) o **cable con depuración USB**. Sin cuentas ni internet.
+Convierte tu móvil en un mando de Xbox / PlayStation / Switch para tu PC con Windows, por **WiFi local**,
+**Bluetooth** (el móvil busca el PC y se conecta) o **cable USB** (con depuración USB). Hasta **6 móviles a la vez**,
+cada uno por la vía que le funcione. Sin cuentas ni internet.
 Opcionalmente ves la pantalla del PC detrás de los botones del mando.
 
 ## Instalar
@@ -13,16 +14,16 @@ Opcionalmente ves la pantalla del PC detrás de los botones del mando.
 
 1. Instala el programa en el PC (instala también el driver del mando virtual, ViGEmBus) y ábrelo.
 2. Instala la app en el móvil (Android pedirá permitir «instalar apps desconocidas»).
-3. En la app: **Escanear código QR** (el del panel del PC) o **Buscar PC**. Elige tu mando y juega.
+3. En la app elige cómo conectar: **Buscar PC en mi WiFi**, **Bluetooth** o **Cable USB**, y escribe el **PIN** que sale en el panel del PC. Elige tu mando y juega.
 
-El móvil y el PC deben estar en la misma red, o conectados por cable / Bluetooth con el anclaje activado.
+Para WiFi, móvil y PC en la misma red. Para Bluetooth, el PC tiene que ser visible (el panel tiene un botón que abre la configuración de Bluetooth de Windows).
 
 ## Qué trae
-- Mandos Xbox, PlayStation (iconos), DualShock 4 y Switch, hasta 4 jugadores.
+- Mandos Xbox, PlayStation (iconos), DualShock 4 y Switch, hasta 6 jugadores (Windows solo da 4 mandos Xbox: los puestos 5 y 6 son DualShock 4).
 - Modos: General, Carreras (giroscopio como volante), Peleas, Disparos (giroscopio para apuntar) y Deportes.
 - Editor de botones: mover, cambiar tamaño, colores y transparencia; exportar e importar diseños.
 - Pantalla del PC en el móvil (H.264 con NVENC/AMF/QSV o x264, con JPEG de respaldo).
-- Panel en el PC con QR por cada conexión, jugadores conectados y expulsar.
+- Panel en el PC con la dirección y el PIN de cada vía, jugadores conectados (y por dónde entran) y expulsar.
 
 ## Carpetas
 - `PCRemote-EXE/` programa del PC (Python: aiohttp, vgamepad, PyAV, PyInstaller + Inno Setup). Ver su `LEEME.txt`.
@@ -36,5 +37,5 @@ La página del mando es una sola: `PCRemote-EXE/app/static/index.html` (el APK l
 - Android: `PCRemote-APK/crear_apk.bat` (Node, JDK 21 y Android SDK).
 
 ## Seguridad
-Cada conexión pide un PIN que muestra el panel. No abras los puertos 8765 y 8766 a internet.
+Todas las vías piden el PIN que muestra el panel. No abras los puertos 8765 y 8766 a internet.
 El APK está firmado con la clave de depuración: sirve para instalarlo, no para Google Play.

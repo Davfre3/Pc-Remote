@@ -14,8 +14,13 @@ Puertos:  8765 (app del movil, http)  y  8766 (navegador con giroscopio, https)
 
 La pagina del mando (app\static\index.html) es la unica copia: el APK la coge de aqui.
 
-CONEXIONES
-  El programa escucha en todas las vias a la vez; el panel muestra una pestana con su QR por cada una:
-    WiFi / red local  .  Cable USB (anclaje USB)  .  Bluetooth (anclaje)  .  Cable con depuracion USB (adb)
-  Cable con depuracion: necesita adb (platform-tools de Android). Se abre solo mientras el movil este conectado.
+CONEXIONES (hasta 6 moviles a la vez, cada uno por la via que le funcione)
+  El programa escucha en las tres vias a la vez; el panel muestra una pestana con la direccion y el PIN de cada una (sin QR):
+    WiFi local  .  Bluetooth (directo, solo botones)  .  Cable USB (con depuracion USB, usa adb)
+  WiFi local: la app tiene «Buscar PC en mi WiFi»; solo hay que escribir el PIN.
+  Bluetooth: la app busca dispositivos cercanos (como PC Remote), empareja y conecta. Si el PC no sale en la lista, el
+    panel tiene el boton «Hacer visible el PC por Bluetooth» (abre Configuracion > Bluetooth; mantenla abierta).
+    El PC registra lo que pasa en %APPDATA%\PCRemote\diag.log (lineas «bluetooth: ...»).
+  Cable: necesita adb (viene incluido). Se abre solo mientras el movil este conectado.
+  Jugadores 5 y 6: XInput solo da 4 mandos Xbox, asi que esos dos puestos se crean como DualShock 4 virtual.
   Seguridad: toda via pide el PIN. No lo compartas y no abras los puertos 8765-8766 a internet.

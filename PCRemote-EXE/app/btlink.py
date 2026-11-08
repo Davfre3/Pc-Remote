@@ -3,11 +3,14 @@
 El movil, ya emparejado con el PC, abre un canal Bluetooth serie. Cada linea es un mensaje JSON igual
 que los del WebSocket; el puente los reenvia al servidor local (/ws), asi el mando funciona igual
 que por red sin tocar el resto del programa. Primera linea del movil: {"k": PIN, "type": "xbox", "c": id}.
+El PC responde al momento con {"t": "btok"} (PIN valido) o {"t": "auth"} (PIN incorrecto): asi el movil sabe que
+ha llegado a PC Remote y no a otro servicio Bluetooth del PC. Pueden conectarse varios moviles a la vez (un hilo cada uno).
 """
 import asyncio
 import ctypes
 import json
 import threading
+import time
 import uuid
 from ctypes import wintypes
 
@@ -65,6 +68,16 @@ def _sock_arg(s):
     return ctypes.c_size_t(s)
 
 
+def available():
+    """True si este PC tiene un adaptador Bluetooth utilizable (se prueba abriendo y cerrando un socket RFCOMM)."""
+    ws2.WSAStartup(0x0202, ctypes.create_string_buffer(512))
+    s = ws2.socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM)
+    if s == INVALID:
+        return False
+    ws2.closesocket(_sock_arg(s))
+    return True
+
+
 class BtServer:
     """Escucha en un canal RFCOMM y se anuncia (SDP) con SERVICE_UUID. start() devuelve False si el PC no tiene Bluetooth."""
 
@@ -88,7 +101,7 @@ class BtServer:
         n = ctypes.c_int(ctypes.sizeof(addr))
         ws2.getsockname(_sock_arg(s), ctypes.byref(addr), ctypes.byref(n))
         self.channel = int(addr.port)
-        if ws2.listen(_sock_arg(s), 4) != 0:
+        if ws2.listen(_sock_arg(s), 8) != 0:
             ws2.closesocket(_sock_arg(s))
             return False
         self.sock = s
@@ -128,7 +141,9 @@ class BtServer:
             if c == INVALID:
                 if self.sock == INVALID:
                     return
+                time.sleep(0.2)   # un error repetido de accept() no debe ocupar toda la CPU
                 continue
+            self.log("bluetooth: conexion entrante")
             threading.Thread(target=self._peer, args=(c,), daemon=True).start()
 
     def _recv_line(self, c, buf):
@@ -154,8 +169,14 @@ class BtServer:
             first = self._recv_line(c, buf)
             hello = json.loads(first) if first else {}
             if hello.get("k") != self.token:
+                self.log("bluetooth: PIN incorrecto" if hello else "bluetooth: el otro lado no habla PC Remote")
                 self._send_line(c, json.dumps({"t": "auth"}))
                 return
+            self._send_line(c, json.dumps({"t": "btok"}))
+            if hello.get("probe"):   # solo comprobar canal y PIN desde la pantalla de inicio de la app: no crea jugador
+                self.log("bluetooth: comprobacion correcta")
+                return
+            self.log(f"bluetooth: movil aceptado ({hello.get('c', '')})")
             fut = asyncio.run_coroutine_threadsafe(self._bridge(c, buf, hello), self.loop)
             fut.result()
         except Exception as e:

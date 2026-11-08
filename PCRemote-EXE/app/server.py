@@ -1,7 +1,7 @@
 """PC Remote (programa del PC): cada movil se convierte en un mando virtual (Xbox 360, PlayStation 4 o Switch).
 
-Requiere el driver ViGEmBus (el instalador lo trae). El movil se conecta por la app (APK) o por el navegador,
-siempre dentro de la misma red local.
+Requiere el driver ViGEmBus (el instalador lo trae). Hasta 6 moviles a la vez, por WiFi local, Bluetooth directo
+o cable USB con depuracion; cada uno entra con la direccion del PC y su PIN (sin QR).
 """
 import argparse
 import asyncio
@@ -21,8 +21,6 @@ import cv2
 import mss
 import numpy as np
 import psutil
-import qrcode
-import qrcode.image.svg
 import vgamepad as vg
 from aiohttp import WSMsgType, web
 
@@ -42,7 +40,9 @@ try:
     DATA.mkdir(parents=True, exist_ok=True)
 except OSError:
     pass
-MAX_PADS = 4  # XInput solo expone 4 mandos Xbox; se mantiene el limite para ambos tipos
+MAX_PADS = 6  # hasta 6 moviles a la vez, cada uno por la via que quiera (WiFi, Bluetooth o cable)
+# XInput solo expone 4 mandos Xbox: los puestos 5 y 6 se crean como DualShock 4, que Windows no limita a 4
+XINPUT_PADS = 4
 # Un toque rapido cuyo pulsar y soltar llegan juntos (rafaga de WiFi) cae dentro de un mismo frame del juego
 # y este nunca lo ve: se mantiene pulsado al menos este tiempo (~2 frames a 60 fps)
 MIN_HOLD = 0.035
@@ -217,37 +217,28 @@ def lan_ip():
         s.close()
 
 
-def kind_of(name, ip):
-    """Adivina como llega el movil por esta interfaz (WiFi, cable USB o Bluetooth)."""
-    n = name.lower()
-    if "bluetooth" in n:
-        return "Bluetooth"
-    # Anclaje USB: Android reparte 192.168.42.x (o 192.168.x.x en RNDIS), iPhone 172.20.10.x
-    if ip.startswith(("192.168.42.", "172.20.10.")) or any(k in n for k in ("rndis", "android", "apple", "usb")):
-        return "Cable USB"
-    if any(k in n for k in ("wi-fi", "wifi", "wlan", "wireless")):
-        return "WiFi"
-    return "Red"
+SKIP_NETS = ("virtualbox", "vbox", "vmware", "vethernet", "hyper-v", "docker", "wsl", "loopback",
+             "bluetooth", "rndis", "android", "apple")   # virtuales y anclajes (no se usan): ningun movil llega por ahi
 
 
 def connections():
-    """Interfaces IPv4 activas -> [(tipo, ip)]; la ruta por defecto va primero."""
+    """Direcciones del PC en la red local (WiFi o cable de red) -> [("WiFi", ip)]; la ruta por defecto va primero."""
     found = []
     try:
         stats = psutil.net_if_stats()
         for name, addrs in psutil.net_if_addrs().items():
             if name in stats and not stats[name].isup:
                 continue
-            if any(v in name.lower() for v in ("virtualbox", "vbox", "vmware", "vethernet", "hyper-v", "docker", "wsl", "loopback")):
-                continue   # adaptadores virtuales: ningun movil llega por ahi
+            if any(v in name.lower() for v in SKIP_NETS):
+                continue
             for a in addrs:
-                if a.family == socket.AF_INET and not a.address.startswith(("127.", "169.254.")):
-                    found.append((kind_of(name, a.address), a.address))
+                if a.family == socket.AF_INET and not a.address.startswith(("127.", "169.254.", "192.168.42.", "192.168.56.")):
+                    found.append(("WiFi", a.address))
     except Exception:
         pass
     main_ip = lan_ip()
     if not any(ip == main_ip for _, ip in found) and main_ip != "127.0.0.1":
-        found.append(("Red", main_ip))
+        found.append(("WiFi", main_ip))
     found.sort(key=lambda c: c[1] != main_ip)
     return found
 
@@ -361,42 +352,34 @@ async def panel_page(request):
     return web.FileResponse(STATIC / "panel.html", headers=NO_CACHE)
 
 
-VIA_KINDS = {"wifi": ("WiFi", "Red"), "usb": ("Cable USB",), "bluetooth": ("Bluetooth",), "adb": ("ADB",)}
-KIND_NAMES = {"WiFi": "WiFi / red local", "Red": "Red local", "Cable USB": "Cable USB (anclaje)",
-              "Bluetooth": "Bluetooth (anclaje)", "ADB": "Cable con depuración USB"}
+KIND_NAMES = {"WiFi": "WiFi local", "BTDirecto": "Bluetooth", "ADB": "Cable USB"}
 KIND_HINTS = {"WiFi": "El móvil y el PC en la misma red WiFi.",
-              "Red": "El móvil y el PC en la misma red.",
-              "Cable USB": "Cable conectado y «Anclaje USB» activado en el móvil.",
-              "Bluetooth": "Móvil emparejado y «Anclaje Bluetooth» activado.",
+              "BTDirecto": "Sin pantalla del PC (solo botones). En la app: Bluetooth > elige este PC.",
               "ADB": "Cable conectado y «Depuración USB» activada en el móvil."}
+KIND_STEPS = {"WiFi": "Conecta el PC y el móvil a la misma red WiFi (puede ser la del punto de acceso de otro móvil).",
+              "BTDirecto": "El Bluetooth de este PC no está disponible. Actívalo en Configuración > Bluetooth y vuelve a abrir PC Remote.",
+              "ADB": "1) En el móvil activa Opciones de desarrollador > Depuración USB.\n2) Conéctalo con el cable y acepta el aviso.\n3) Aparecerá aquí sin más pasos."}
 
 
 def all_connections(app):
-    """Todas las vias por las que un movil puede llegar ahora mismo (el servidor escucha en todas a la vez).
-    La elegida al arrancar va primero."""
+    """Todas las vias por las que un movil puede llegar ahora mismo (el servidor escucha en todas a la vez):
+    WiFi local, Bluetooth directo y cable con depuracion USB. Las credenciales son la direccion y el PIN."""
     port, token, https = app["port"], app["token"], app["info"].get("https")
     out = []
     for kind, ip in connections():
-        out.append({"id": f"{kind}-{ip}", "kind": kind, "name": KIND_NAMES.get(kind, kind), "hint": KIND_HINTS.get(kind, ""),
+        out.append({"id": f"{kind}-{ip}", "kind": kind, "name": KIND_NAMES[kind], "hint": KIND_HINTS[kind],
                     "ip": ip, "address": f"{ip}:{port}", "url": f"http://{ip}:{port}/?k={token}",
                     "web_url": f"https://{ip}:{port + 1}/?k={token}" if https else f"http://{ip}:{port}/?k={token}"})
     if app["info"].get("bt_on"):
-        out.append({"id": "BT", "kind": "BTDirecto", "name": "Bluetooth directo (solo botones)", "nourl": True,
-                    "hint": "Sin pantalla del PC. Empareja el móvil con el PC en Bluetooth y, en la app, pulsa «Bluetooth».",
-                    "ip": "", "address": "", "url": "", "web_url": ""})
+        out.append({"id": "BT", "kind": "BTDirecto", "name": KIND_NAMES["BTDirecto"], "hint": KIND_HINTS["BTDirecto"],
+                    "nourl": True, "ip": "", "address": "", "url": "", "web_url": ""})
     if adb_ready():
         out.append({"id": "ADB", "kind": "ADB", "name": KIND_NAMES["ADB"], "hint": KIND_HINTS["ADB"], "ip": "localhost",
                     "address": f"localhost:{port}", "url": f"http://localhost:{port}/?k={token}",
                     "web_url": f"http://localhost:{port}/?k={token}"})
-    pref = VIA_KINDS.get(app["info"].get("via_id"), ())
-    out.sort(key=lambda c: c["kind"] not in pref)
     return out
 
 _BT_KEEP = []
-KIND_STEPS = {"WiFi": "Conecta el PC y el móvil a la misma red WiFi (o activa el punto de acceso del móvil y conecta el PC a él).",
-              "Cable USB": "1) Conecta el móvil con el cable USB.\n2) En el móvil: Ajustes > Conexiones > Punto de acceso y anclaje > Anclaje USB.\n3) Espera unos segundos: aparecerá aquí.",
-              "Bluetooth": "1) Empareja el móvil con el PC por Bluetooth.\n2) En el móvil activa «Anclaje Bluetooth».\n3) En el PC: Configuración > Bluetooth > el móvil > Conectar (red).",
-              "ADB": "1) En el móvil activa Opciones de desarrollador > Depuración USB.\n2) Conéctalo con el cable y acepta el aviso.\n3) Aparecerá aquí sin más pasos."}
 
 
 async def panel_state(request):
@@ -406,29 +389,28 @@ async def panel_state(request):
     for slot in range(MAX_PADS):
         m = app["players"].get(slot)
         players.append(None if not m else {
-            "slot": slot + 1, "kind": m["kind"], "ip": m["ip"], "seconds": int(now - m["t0"]),
+            "slot": slot + 1, "kind": m["kind"], "ip": m["ip"], "via": m.get("via", ""), "seconds": int(now - m["t0"]),
             "idle": round(now - m["last"], 1), "rtt": m.get("rtt")})
     hc = h264_choice()
     conns = await asyncio.get_running_loop().run_in_executor(None, all_connections, app)
-    first = conns[0] if conns else None
+    first = next((c for c in conns if not c.get("nourl")), None)
     present = {c["kind"] for c in conns}
     missing = [{"kind": k, "name": KIND_NAMES[k], "hint": KIND_HINTS[k], "steps": KIND_STEPS[k]}
-               for k in ("WiFi", "Cable USB", "Bluetooth", "ADB") if k not in present and not (k == "WiFi" and "Red" in present)]
+               for k in ("WiFi", "BTDirecto", "ADB") if k not in present]
     return web.json_response({**app["info"], "screen": bool(app["feed"]), "encoder": hc[0] if hc else None, "missing": missing,
-                              "players": players, "connections": conns,
+                              "players": players, "connections": conns, "max_pads": MAX_PADS, "xinput_pads": XINPUT_PADS,
                               "url": first["url"] if first else "", "web_url": first["web_url"] if first else "",
                               "address": first["address"] if first else "—"}, headers=NO_CACHE)
 
 
-async def panel_qr(request):
+async def panel_bluetooth(request):
+    """Deja a mano la pantalla de Bluetooth de Windows: mientras esta abierta, el PC es visible para los moviles que buscan."""
     panel_guard(request)
-    conns = await asyncio.get_running_loop().run_in_executor(None, all_connections, request.app)
-    want = request.query.get("i")
-    conn = next((c for c in conns if c["id"] == want), conns[0] if conns else None)
-    if conn is None:
-        raise web.HTTPNotFound(text="sin conexion")
-    img = qrcode.make(conn["url"], image_factory=qrcode.image.svg.SvgPathImage, box_size=10, border=1)
-    return web.Response(body=img.to_string(), content_type="image/svg+xml", headers=NO_CACHE)
+    try:
+        os.startfile("ms-settings:bluetooth")
+        return web.json_response({"ok": True})
+    except OSError:
+        return web.json_response({"ok": False})
 
 
 async def panel_screen(request):
@@ -579,8 +561,11 @@ def split_region(rank, players, side_by_side=False):
         return FULL
     if players == 2:  # Mario Kart y casi todos: arriba/abajo; algunos juegos dejan ponerlo lado a lado
         return (0.5 * rank, 0.0, 0.5 * rank + 0.5, 1.0) if side_by_side else (0.0, 0.5 * rank, 1.0, 0.5 * rank + 0.5)
-    x, y = rank % 2, rank // 2  # 3 o 4: un cuarto cada uno, en orden de lectura
-    return (0.5 * x, 0.5 * y, 0.5 * x + 0.5, 0.5 * y + 0.5)
+    if players <= 4:
+        x, y = rank % 2, rank // 2  # 3 o 4: un cuarto cada uno, en orden de lectura
+        return (0.5 * x, 0.5 * y, 0.5 * x + 0.5, 0.5 * y + 0.5)
+    x, y = rank % 3, rank // 3   # 5 o 6: rejilla de 3 columnas por 2 filas
+    return (x / 3, 0.5 * y, (x + 1) / 3, 0.5 * y + 0.5)
 
 
 # Parte elegida a mano en el movil (no depende de cuantos jugadores haya ni de su orden)
@@ -841,6 +826,8 @@ async def ws_handler(request):
     if request.query.get("k") != app["token"]:
         raise web.HTTPForbidden(text="PIN incorrecto")
     pad_cls = PAD_TYPES.get(request.query.get("type", "xbox"), XboxPad)
+    cid_q = request.query.get("c", "")
+    via = "Bluetooth" if cid_q.startswith("bt") else "Cable USB" if request.remote in ("127.0.0.1", "::1") else "WiFi"
 
     # Sin compresion por mensaje: anade CPU y latencia a mensajes de pocos bytes.
     # Latido corto: un movil que se cae de la red se detecta en pocos segundos y libera su hueco
@@ -868,11 +855,13 @@ async def ws_handler(request):
         await ws.close()
         return ws
 
+    if slot >= XINPUT_PADS:   # XInput solo da 4 mandos Xbox: del 5.º en adelante, un DualShock 4 virtual
+        pad_cls = Ps4Pad
     pad = pad_cls()
     slots[slot] = pad
     if cid:
         clients[cid] = (ws, slot)
-    meta = app["players"][slot] = {"kind": pad.kind, "ip": request.remote, "ws": ws,
+    meta = app["players"][slot] = {"kind": pad.kind, "ip": request.remote, "via": via, "ws": ws,
                                    "t0": time.monotonic(), "last": time.monotonic()}  # lo que ensena el panel
     loop = asyncio.get_running_loop()
 
@@ -973,7 +962,7 @@ def make_app(token, live=False, details=None):
     app["feed"] = ScreenFeed() if live else None  # pantalla del PC dentro de la pagina del mando
     app.router.add_get("/panel", panel_page)
     app.router.add_get("/panel/state", panel_state)
-    app.router.add_get("/panel/qr.svg", panel_qr)
+    app.router.add_post("/panel/bluetooth", panel_bluetooth)
     app.router.add_post("/panel/screen", panel_screen)
     app.router.add_post("/panel/kick", panel_kick)
     app.router.add_get("/", index)
@@ -984,37 +973,6 @@ def make_app(token, live=False, details=None):
     app.router.add_get("/layouts", layouts_get)
     app.router.add_post("/layouts", layouts_post)
     return app
-
-
-VIAS = {
-    "wifi": ("WiFi / red local", ("WiFi", "Red"), "Conecta el PC y el movil a la misma red WiFi."),
-    "usb": ("Cable USB (anclaje USB)", ("Cable USB",),
-            "Conecta el cable y activa 'Anclaje USB' en el movil (Ajustes > Zona WiFi y anclaje)."),
-    "bluetooth": ("Bluetooth (anclaje Bluetooth)", ("Bluetooth",),
-                  "Empareja el movil, activa 'Anclaje Bluetooth' y en Windows: Bluetooth y dispositivos >"
-                  " tu movil > Conectar mediante > Punto de acceso."),
-    "adb": ("Cable USB con depuracion USB (adb)", (),
-            "Conecta el cable, activa la 'Depuracion USB' y acepta el aviso en el movil."),
-}
-
-
-def ask_via():
-    keys = list(VIAS)
-    print("\nComo quieres conectar el movil?\n")
-    for i, k in enumerate(keys, 1):
-        print(f"  {i}) {VIAS[k][0]}")
-    while True:
-        r = input("\nElige un numero: ").strip()
-        if r.isdigit() and 1 <= int(r) <= len(keys):
-            return keys[int(r) - 1]
-
-
-def via_host(via):
-    """IP por la que llega el movil con esta via, o None si aun no esta lista (adb se comprueba aparte)."""
-    for kind, ip in connections():
-        if kind in VIAS[via][1]:
-            return ip
-    return None
 
 
 _adb_cache = (0.0, False)
@@ -1037,43 +995,29 @@ def adb_ready():
     return ok
 
 
-def wait_for_via(via, port):
-    """Espera a que la via elegida este lista y devuelve la IP donde escuchar."""
-    name, kinds, help_ = VIAS[via]
-    if via == "adb" and not find_adb():
-        sys.exit("No se encontro 'adb' en el PATH. Instala Android platform-tools o elige otra via.")
-    print(f"\nVia elegida: {name}\n  {help_}\n  Esperando la conexion (Ctrl+C para cancelar)...")
-    while True:
-        if via == "adb":
-            if adb_reverse(port):
-                return "127.0.0.1"
-        else:
-            ip = via_host(via)
-            if ip:
-                return ip
-        time.sleep(2)
-
-
 # ---- pantalla de inicio: elegir como conectar, con deteccion en vivo (en lugar de preguntas en la consola) ----
-VIA_UI = {  # nombre y ayuda cortos para las tarjetas
-    "wifi": ("WiFi / red local", "El móvil y el PC en la misma red. La opción más fluida."),
-    "usb": ("Cable USB", "Activa «Anclaje USB» en el móvil (Ajustes > Zona WiFi y anclaje)."),
-    "bluetooth": ("Bluetooth", "Anclaje Bluetooth. La imagen del PC va lenta por aquí."),
-    "adb": ("Cable con depuración USB", "Para desarrolladores: necesita adb y la depuración USB activada."),
-}
-
-
 def setup_state(saved):
-    vias = []
-    for k in VIAS:
-        ip = "127.0.0.1" if k == "adb" and adb_ready() else None if k == "adb" else via_host(k)
-        vias.append({"id": k, "name": VIA_UI[k][0], "help": VIA_UI[k][1], "detected": bool(ip), "ip": ip})
+    """Estado de las tres vias para la pantalla de inicio. El programa las abre todas a la vez."""
+    wifi = connections()
+    try:
+        import btlink
+        bt = btlink.available()
+    except Exception:
+        bt = False
+    vias = [
+        {"id": "wifi", "name": "WiFi local", "detected": bool(wifi), "ip": wifi[0][1] if wifi else None,
+         "help": "El móvil y el PC en la misma red WiFi. La opción más fluida y la única con pantalla del PC."},
+        {"id": "bluetooth", "name": "Bluetooth", "detected": bt, "ip": None,
+         "help": "El móvil busca el PC y se conecta, sin red. Solo botones, sin pantalla."},
+        {"id": "adb", "name": "Cable USB", "detected": adb_ready(), "ip": None,
+         "help": "Cable con «Depuración USB» activada en el móvil. Sin red y casi sin retraso."},
+    ]
     hc = h264_choice()
     return {"pc": socket.gethostname(), "vias": vias, "saved": saved, "encoder": hc[0] if hc else None}
 
 
 def run_setup(saved, port, token):
-    """Abre la pantalla de inicio y espera a que se pulse Iniciar. Devuelve {via, https, pantalla, panel_url},
+    """Abre la pantalla de inicio y espera a que se pulse Iniciar. Devuelve {https, pantalla, panel_url},
     o None si se cierra la ventana sin iniciar."""
     key = secrets.token_hex(4)
     result, last_poll = {}, [None]
@@ -1095,12 +1039,9 @@ def run_setup(saved, port, token):
     async def start(request):
         guard(request)
         b = await request.json()
-        via = b.get("via")
-        if via not in VIAS:
-            raise web.HTTPBadRequest()
-        https = False if via == "adb" else bool(b.get("https"))
+        https = bool(b.get("https"))
         ip = "127.0.0.1"   # el panel siempre se abre desde este mismo PC
-        result.update(via=via, https=https, pantalla=bool(b.get("pantalla")),
+        result.update(https=https, pantalla=bool(b.get("pantalla")),
                       panel_url=f"http://{ip}:{port}/panel?k={token}")
         return web.json_response({"panel_url": result["panel_url"]})
 
@@ -1190,7 +1131,7 @@ def other_instance(port, token):
 
 
 def start_tray(panel_url, port, token):
-    """Icono junto al reloj: abrir el panel, cambiar la conexion o salir. El programa vive aqui cuando no hay ventana."""
+    """Icono junto al reloj: abrir el panel, ajustes de inicio o salir. El programa vive aqui cuando no hay ventana."""
     try:
         import pystray
         from PIL import Image
@@ -1215,7 +1156,7 @@ def start_tray(panel_url, port, token):
 
     menu = pystray.Menu(
         pystray.MenuItem("Abrir panel", show_url, default=True),
-        pystray.MenuItem("Cambiar conexión…", relaunch),
+        pystray.MenuItem("Ajustes de inicio…", relaunch),
         pystray.MenuItem("Salir", quit_))
     pystray.Icon("PCRemote", image, "PC Remote", menu).run_detached()
 
@@ -1264,7 +1205,6 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--pin", default=None, help="PIN fijo (por defecto, uno que se guarda)")
-    ap.add_argument("--via", choices=list(VIAS), help="forma de conexion; si falta, se usa la guardada o se pregunta")
     ap.add_argument("--https", action=argparse.BooleanOptionalAction, default=None,
                     help="ofrecer tambien https (navegador con giroscopio)")
     ap.add_argument("--pantalla", action=argparse.BooleanOptionalAction, default=None,
@@ -1293,20 +1233,21 @@ def main():
 
     # El servidor escucha en todas las vias a la vez; la elegida solo decide cual se enseña primero en el panel.
     # Con una ya elegida otra vez se arranca directo; si no, pantalla de inicio grafica
-    quick = not args.sin_panel and args.via is None and saved.get("via") in VIAS
+    # El servidor escucha en las tres vias a la vez (WiFi local, Bluetooth y cable): cada uno de los 6 moviles
+    # puede entrar por la que le funcione. Con los ajustes ya guardados se arranca directo; si no, pantalla de inicio
+    quick = not args.sin_panel and "pantalla" in saved
     choice = None
-    if args.via is None and not args.sin_panel and not quick:
+    if not args.sin_panel and not quick:
         try:
             choice = run_setup(saved, args.port, token)
         except KeyboardInterrupt:
             return
         if choice is None:
             return
-    via = args.via or (choice and choice["via"]) or saved.get("via") or ask_via()
     host = "0.0.0.0"
 
-    use_https = False if via == "adb" else args.https
-    if use_https is None and via != "adb":
+    use_https = args.https
+    if use_https is None:
         use_https = choice["https"] if choice else saved.get("https", True)
     ctx = None
     if use_https:
@@ -1318,11 +1259,11 @@ def main():
     screen = args.pantalla
     if screen is None:
         screen = choice["pantalla"] if choice else saved.get("pantalla", True)
-    save_settings({"via": via, "pantalla": bool(screen), **({"https": bool(use_https)} if via != "adb" else {})})
+    save_settings({"pantalla": bool(screen), "https": bool(use_https)})
 
-    print(f"== PC Remote · preferida: {VIAS[via][0]} · puerto {args.port} ==")
+    print(f"== PC Remote · WiFi local, Bluetooth y cable · puerto {args.port} ==")
     app = make_app(token, live=bool(screen), details={
-        "pc": socket.gethostname(), "via": VIAS[via][0], "via_id": via, "port": args.port,
+        "pc": socket.gethostname(), "port": args.port,
         "https": bool(use_https), "pin": token})
     panel_url = f"http://127.0.0.1:{args.port}/panel?k={token}"
     threading.Thread(target=adb_watch, args=(args.port,), daemon=True).start()

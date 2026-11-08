@@ -234,17 +234,19 @@ const SRV = qs.get('srv') || '';
 const API = SRV ? 'http://' + SRV : '';
 // Bluetooth directo (solo en la app): ?bt=direccion. Sin pantalla del PC: solo botones, palancas y giroscopio
 const BT = qs.get('bt') || '', BT_UUID = '7a1f2b64-3c5d-4e8a-9b10-5043524d4f54';
+let btErr = '';   // por que fallo el ultimo intento por Bluetooth (se ensena en el menu)
 class BtSocket {   // se comporta como un WebSocket, pero habla por el canal Bluetooth de la app
   constructor(addr, pin, type, cid) {
-    this.readyState = 0; this.bufferedAmount = 0; this.hs = [];
+    this.readyState = 0; this.bufferedAmount = 0; this.hs = []; btErr = '';
     const P = this.P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.BtPad;
-    if (!P) { setTimeout(() => this._end(), 0); return; }
+    if (!P) { btErr = 'El Bluetooth solo está en la app del móvil.'; setTimeout(() => this._end(), 0); return; }
     P.addListener('line', e => { if (this.onmessage) this.onmessage({ data: e.data }); }).then(h => this.hs.push(h));
     P.addListener('closed', () => this._end()).then(h => this.hs.push(h));
-    P.open({ address: addr, uuid: BT_UUID })
-      .then(() => P.write({ data: JSON.stringify({ k: pin, type, c: cid }) }))
+    P.addListener('status', e => { if (this.readyState === 0) { msg.classList.remove('hide'); msgtxt.textContent = e.text; } }).then(h => this.hs.push(h));
+    // la app manda el saludo con el PIN y espera la confirmacion del PC antes de dar el canal por abierto
+    P.open({ address: addr, uuid: BT_UUID, hello: JSON.stringify({ k: pin, type, c: cid }) })
       .then(() => { this.readyState = 1; if (this.onopen) this.onopen(); })
-      .catch(() => this._end());
+      .catch(e => { btErr = (e && (e.message || e.errorMessage)) || 'sin respuesta'; this._end(); });
   }
   send(d) { this.bufferedAmount++; this.P.write({ data: d }).catch(() => this._end()).finally(() => this.bufferedAmount--); }
   close() { if (this.P) this.P.close().catch(() => {}); this._end(); }
@@ -526,9 +528,9 @@ function connect() {
       }
       retryUntil = 0;
     }
-    showMenu(full ? 'Ya hay 4 mandos conectados. Inténtalo de nuevo cuando se libere uno.'
+    showMenu(full ? 'Ya hay 6 mandos conectados. Inténtalo de nuevo cuando se libere uno.'
       : opened ? 'Conexión perdida. ¿Cómo quieres reconectar?'
-      : 'No se pudo conectar. ¿Reintentar como…?');
+      : (BT && btErr ? btErr + ' ' : 'No se pudo conectar. ') + '¿Reintentar como…?');
   };
 }
 let lastRtt = null;   // la latencia que midio el movil; el panel del PC la ensena

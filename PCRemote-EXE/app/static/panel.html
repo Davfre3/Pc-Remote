@@ -58,6 +58,7 @@
   .tabs { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px; }
   .tabs button { background:var(--card2); border:1px solid var(--line); border-radius:99px; padding:6px 12px; font-size:12.5px; font-weight:600; color:var(--mut); }
   .tabs button.cur { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .tabs button.offt { opacity:.6; border-style:dashed; }
   .chint { color:var(--mut); font-size:12.5px; text-align:center; margin:-6px 0 14px; min-height:1.3em; }
   .noconn { color:var(--warn); text-align:center; font-size:13.5px; padding:30px 8px; }
 </style>
@@ -130,19 +131,22 @@ $('scr').onclick = async () => {
 function render(s) {
   last = s;
   $('pc').textContent = s.pc || 'Este PC';
-  const cs = s.connections || [];
-  if (!cs.find(c => c.id === selConn)) selConn = cs[0] ? cs[0].id : null;
-  const cur = cs.find(c => c.id === selConn);
-  const tabs = $('conns'), sig = cs.map(c => c.id).join('|') + '#' + selConn;
+  const cs = s.connections || [], ms = (s.missing || []).map(m => ({ ...m, id: 'm:' + m.kind, off: true }));
+  const all = cs.concat(ms);
+  if (!all.find(c => c.id === selConn)) selConn = all[0] ? all[0].id : null;
+  const cur = all.find(c => c.id === selConn), live = cur && !cur.off;
+  const tabs = $('conns'), sig = all.map(c => c.id).join('|') + '#' + selConn;
   if (tabs.dataset.sig !== sig) {   // solo se redibuja si cambian las conexiones, para no parpadear
     tabs.dataset.sig = sig; tabs.innerHTML = '';
-    cs.forEach(c => { const b = document.createElement('button'); b.textContent = c.name + (cs.filter(x => x.kind === c.kind).length > 1 ? ' · ' + c.ip : '');
-      if (c.id === selConn) b.className = 'cur'; b.onclick = () => { selConn = c.id; render(last); }; tabs.appendChild(b); });
+    all.forEach(c => { const b = document.createElement('button'); b.textContent = (c.off ? '○ ' : '') + c.name + (!c.off && cs.filter(x => x.kind === c.kind).length > 1 ? ' · ' + c.ip : '');
+      b.className = (c.id === selConn ? 'cur ' : '') + (c.off ? 'offt' : ''); b.onclick = () => { selConn = c.id; render(last); }; tabs.appendChild(b); });
   }
-  const key = cur ? cur.id + cur.url : '';
-  if (key !== qrKey) { qrKey = key; $('qr').style.visibility = cur ? '' : 'hidden'; if (cur) $('qr').src = q('/panel/qr.svg?i=' + encodeURIComponent(cur.id)) + '&t=' + Date.now(); }
-  $('chint').textContent = cur ? cur.hint : '';
-  $('url').textContent = cur ? cur.web_url : 'Sin ninguna conexión: conecta el móvil por WiFi, cable USB o Bluetooth';
+  const key = live ? cur.id + cur.url : '';
+  if (key !== qrKey) { qrKey = key; $('qr').style.visibility = live ? '' : 'hidden'; $('qr').style.display = live ? '' : 'none'; if (live) $('qr').src = q('/panel/qr.svg?i=' + encodeURIComponent(cur.id)) + '&t=' + Date.now(); }
+  $('chint').textContent = cur ? (cur.off ? 'No detectada todavía. ' + cur.hint : cur.hint) : '';
+  $('chint').style.whiteSpace = 'pre-line';
+  if (cur && cur.off) $('chint').textContent = 'No detectada todavía:\n' + cur.steps;
+  $('url').textContent = live ? cur.web_url : 'Sigue los pasos de arriba: esta conexión se activa sola al detectarla';
   const n = s.players.filter(Boolean).length;
   $('status').classList.toggle('on', n > 0);
   $('stxt').textContent = n ? `${n} jugador${n > 1 ? 'es' : ''} conectado${n > 1 ? 's' : ''}` : 'Esperando móviles';

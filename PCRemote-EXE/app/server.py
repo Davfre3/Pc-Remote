@@ -385,6 +385,11 @@ def all_connections(app):
     out.sort(key=lambda c: c["kind"] not in pref)
     return out
 
+KIND_STEPS = {"WiFi": "Conecta el PC y el móvil a la misma red WiFi (o activa el punto de acceso del móvil y conecta el PC a él).",
+              "Cable USB": "1) Conecta el móvil con el cable USB.\n2) En el móvil: Ajustes > Conexiones > Punto de acceso y anclaje > Anclaje USB.\n3) Espera unos segundos: aparecerá aquí.",
+              "Bluetooth": "1) Empareja el móvil con el PC por Bluetooth.\n2) En el móvil activa «Anclaje Bluetooth».\n3) En el PC: Configuración > Bluetooth > el móvil > Conectar (red).",
+              "ADB": "1) En el móvil activa Opciones de desarrollador > Depuración USB.\n2) Conéctalo con el cable y acepta el aviso.\n3) Aparecerá aquí sin más pasos."}
+
 
 async def panel_state(request):
     panel_guard(request)
@@ -398,7 +403,10 @@ async def panel_state(request):
     hc = h264_choice()
     conns = await asyncio.get_running_loop().run_in_executor(None, all_connections, app)
     first = conns[0] if conns else None
-    return web.json_response({**app["info"], "screen": bool(app["feed"]), "encoder": hc[0] if hc else None,
+    present = {c["kind"] for c in conns}
+    missing = [{"kind": k, "name": KIND_NAMES[k], "hint": KIND_HINTS[k], "steps": KIND_STEPS[k]}
+               for k in ("WiFi", "Cable USB", "Bluetooth", "ADB") if k not in present and not (k == "WiFi" and "Red" in present)]
+    return web.json_response({**app["info"], "screen": bool(app["feed"]), "encoder": hc[0] if hc else None, "missing": missing,
                               "players": players, "connections": conns,
                               "url": first["url"] if first else "", "web_url": first["web_url"] if first else "",
                               "address": first["address"] if first else "—"}, headers=NO_CACHE)

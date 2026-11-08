@@ -254,6 +254,9 @@ def connections():
 
 def find_adb():
     """adb del PATH o, si no, el de las herramientas de Android (platform-tools) donde suelen instalarse."""
+    own = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "adb" / "adb.exe"   # el que lleva el programa
+    if own.exists():
+        return str(own)
     found = shutil.which("adb")
     if found:
         return found

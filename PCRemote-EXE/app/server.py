@@ -34,7 +34,7 @@ try:  # video H.264 propio (sin Moonlight); si falta, la pantalla sigue yendo en
 except ImportError:
     av = None
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 # Aqui se publica la version mas nueva (version.json); el programa y la app del movil la consultan para actualizarse
 UPDATE_URL = "https://raw.githubusercontent.com/Davfre3/Pc-Remote/main/releases/version.json"
 
@@ -251,18 +251,44 @@ def connections():
     return found
 
 
+_adb_used = False
+
+
+def stop_adb():
+    """adb deja un servidor en segundo plano que sigue vivo al cerrar el programa (y bloquea sus archivos):
+    al salir se cierra, si lo hemos usado."""
+    if not _adb_used:
+        return
+    adb = find_adb()
+    if adb:
+        try:
+            subprocess.run([adb, "kill-server"], capture_output=True, timeout=4, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+
+def quit_app(code=0):
+    """Salida del programa: cierra adb y termina (os._exit no pasa por atexit)."""
+    stop_adb()
+    os._exit(code)
+
+
 def find_adb():
     """adb del PATH o, si no, el de las herramientas de Android (platform-tools) donde suelen instalarse."""
+    global _adb_used
     own = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "adb" / "adb.exe"   # el que lleva el programa
     if own.exists():
+        _adb_used = True
         return str(own)
     found = shutil.which("adb")
     if found:
+        _adb_used = True
         return found
     roots = [os.environ.get("ANDROID_HOME"), os.environ.get("ANDROID_SDK_ROOT"),
              str(Path(os.environ.get("LOCALAPPDATA", "")) / "Android" / "Sdk")]
     for r in roots:
         if r and (Path(r) / "platform-tools" / "adb.exe").exists():
+            _adb_used = True
             return str(Path(r) / "platform-tools" / "adb.exe")
     return None
 
@@ -556,7 +582,7 @@ def _update_worker():
         # /SILENT: solo la barra de progreso (Windows pedira permiso de administrador); al terminar abre el programa
         subprocess.Popen([str(dest), "/SILENT", "/CLOSEAPPLICATIONS", "/NORESTART"], close_fds=True)
         time.sleep(0.5)
-        os._exit(0)
+        quit_app(0)
     except Exception as e:
         diag(f"actualizar: {e}")
         UPDATE.update(state="error", error=f"No se pudo actualizar: {e}")
@@ -1267,6 +1293,7 @@ def other_instance(port, token):
 def relaunch_setup():
     """Cierra el programa y lo abre otra vez con la pantalla de inicio (para cambiar las vias de conexion)."""
     exe = [sys.executable] if FROZEN else [sys.executable, str(Path(__file__).resolve())]
+    stop_adb()   # el nuevo arranque abre el suyo
     subprocess.Popen(exe + ["--preguntar"], cwd=str(APP_DIR))
     os._exit(0)
 
@@ -1291,7 +1318,7 @@ def start_tray(panel_url, port, token):
         open_panel_window(panel_url)
 
     def quit_(_icon=None, _item=None):
-        os._exit(0)
+        quit_app(0)
 
     menu = pystray.Menu(
         pystray.MenuItem("Abrir panel", show_url, default=True),
@@ -1341,6 +1368,13 @@ async def serve_forever(app, host, port, ctx):
 
 
 def main():
+    try:
+        _main()
+    finally:
+        stop_adb()   # cierre normal, Ctrl+C o error: adb no se queda abierto
+
+
+def _main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--pin", default=None, help="PIN fijo (por defecto, uno que se guarda)")

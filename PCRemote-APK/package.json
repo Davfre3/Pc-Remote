@@ -1,6 +1,6 @@
 {
   "name": "pc-remote-android",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "App de Android de PC Remote: el movil como mando de tu PC en la misma red",
   "scripts": {

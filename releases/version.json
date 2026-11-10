@@ -1,0 +1,7 @@
+{
+  "version": "1.1.0",
+  "notes": "Elige las conexiones al iniciar, QR solo para WiFi y actualización desde el propio programa y la app.",
+  "exe": "https://github.com/Davfre3/Pc-Remote/releases/latest/download/PC-Remote-Instalador.exe",
+  "exe_sha256": "234e3c9cba7c143479371ecb01d2507b0d3f3c51aa22aa39ab0218cd0f2d4c4c",
+  "apk": "https://github.com/Davfre3/Pc-Remote/raw/main/releases/PC-Remote.apk"
+}

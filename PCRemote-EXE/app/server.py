@@ -1,12 +1,14 @@
 """PC Remote (programa del PC): cada movil se convierte en un mando virtual (Xbox 360, PlayStation 4 o Switch).
 
 Requiere el driver ViGEmBus (el instalador lo trae). Hasta 6 moviles a la vez, por WiFi local, Bluetooth directo
-o cable USB con depuracion; cada uno entra con la direccion del PC y su PIN (sin QR).
+o cable USB con depuracion; cada uno entra con el PIN (y, por WiFi, tambien con el QR).
 """
 import argparse
 import asyncio
+import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import socket
@@ -21,6 +23,8 @@ import cv2
 import mss
 import numpy as np
 import psutil
+import qrcode
+import qrcode.image.svg
 import vgamepad as vg
 from aiohttp import WSMsgType, web
 
@@ -29,6 +33,10 @@ try:  # video H.264 propio (sin Moonlight); si falta, la pantalla sigue yendo en
     from fractions import Fraction
 except ImportError:
     av = None
+
+VERSION = "1.1.0"
+# Aqui se publica la version mas nueva (version.json); el programa y la app del movil la consultan para actualizarse
+UPDATE_URL = "https://raw.githubusercontent.com/Davfre3/Pc-Remote/main/releases/version.json"
 
 FROZEN = getattr(sys, "frozen", False)
 APP_DIR = Path(__file__).parent
@@ -352,6 +360,8 @@ async def panel_page(request):
     return web.FileResponse(STATIC / "panel.html", headers=NO_CACHE)
 
 
+VIA_IDS = ["wifi", "bluetooth", "adb"]
+VIA_KIND = {"wifi": "WiFi", "bluetooth": "BTDirecto", "adb": "ADB"}
 KIND_NAMES = {"WiFi": "WiFi local", "BTDirecto": "Bluetooth", "ADB": "Cable USB"}
 KIND_HINTS = {"WiFi": "El móvil y el PC en la misma red WiFi.",
               "BTDirecto": "Sin pantalla del PC (solo botones). En la app: Bluetooth > elige este PC.",
@@ -365,15 +375,16 @@ def all_connections(app):
     """Todas las vias por las que un movil puede llegar ahora mismo (el servidor escucha en todas a la vez):
     WiFi local, Bluetooth directo y cable con depuracion USB. Las credenciales son la direccion y el PIN."""
     port, token, https = app["port"], app["token"], app["info"].get("https")
+    vias = app["info"].get("vias", VIA_IDS)
     out = []
-    for kind, ip in connections():
+    for kind, ip in (connections() if "wifi" in vias else []):
         out.append({"id": f"{kind}-{ip}", "kind": kind, "name": KIND_NAMES[kind], "hint": KIND_HINTS[kind],
                     "ip": ip, "address": f"{ip}:{port}", "url": f"http://{ip}:{port}/?k={token}",
                     "web_url": f"https://{ip}:{port + 1}/?k={token}" if https else f"http://{ip}:{port}/?k={token}"})
-    if app["info"].get("bt_on"):
+    if "bluetooth" in vias and app["info"].get("bt_on"):
         out.append({"id": "BT", "kind": "BTDirecto", "name": KIND_NAMES["BTDirecto"], "hint": KIND_HINTS["BTDirecto"],
                     "nourl": True, "ip": "", "address": "", "url": "", "web_url": ""})
-    if adb_ready():
+    if "adb" in vias and adb_ready():
         out.append({"id": "ADB", "kind": "ADB", "name": KIND_NAMES["ADB"], "hint": KIND_HINTS["ADB"], "ip": "localhost",
                     "address": f"localhost:{port}", "url": f"http://localhost:{port}/?k={token}",
                     "web_url": f"http://localhost:{port}/?k={token}"})
@@ -396,11 +407,40 @@ async def panel_state(request):
     first = next((c for c in conns if not c.get("nourl")), None)
     present = {c["kind"] for c in conns}
     missing = [{"kind": k, "name": KIND_NAMES[k], "hint": KIND_HINTS[k], "steps": KIND_STEPS[k]}
-               for k in ("WiFi", "BTDirecto", "ADB") if k not in present]
+               for k in (VIA_KIND[v] for v in app["info"].get("vias", VIA_IDS)) if k not in present]
     return web.json_response({**app["info"], "screen": bool(app["feed"]), "encoder": hc[0] if hc else None, "missing": missing,
-                              "players": players, "connections": conns, "max_pads": MAX_PADS, "xinput_pads": XINPUT_PADS,
+                              "players": players, "connections": conns, "update": update_info(), "version": VERSION, "max_pads": MAX_PADS, "xinput_pads": XINPUT_PADS,
                               "url": first["url"] if first else "", "web_url": first["web_url"] if first else "",
                               "address": first["address"] if first else "—"}, headers=NO_CACHE)
+
+
+async def panel_qr(request):
+    """QR con la direccion y el PIN. Solo para WiFi: es la unica via que se escribe/escanea como direccion."""
+    panel_guard(request)
+    conns = await asyncio.get_running_loop().run_in_executor(None, all_connections, request.app)
+    want = request.query.get("i")
+    conn = next((c for c in conns if c["kind"] == "WiFi" and c["id"] == want), next((c for c in conns if c["kind"] == "WiFi"), None))
+    if conn is None:
+        raise web.HTTPNotFound(text="sin WiFi")
+    img = qrcode.make(conn["url"], image_factory=qrcode.image.svg.SvgPathImage, box_size=10, border=1)
+    return web.Response(body=img.to_string(), content_type="image/svg+xml", headers=NO_CACHE)
+
+
+async def panel_relaunch(request):
+    """«Cambiar conexiones»: vuelve a la pantalla de inicio."""
+    panel_guard(request)
+    asyncio.get_running_loop().call_later(0.4, relaunch_setup)
+    return web.json_response({"ok": True})
+
+
+async def panel_update_check(request):
+    panel_guard(request)
+    return web.json_response(await asyncio.get_running_loop().run_in_executor(None, update_check), headers=NO_CACHE)
+
+
+async def panel_update_install(request):
+    panel_guard(request)
+    return web.json_response(update_start(), headers=NO_CACHE)
 
 
 async def panel_bluetooth(request):
@@ -454,6 +494,81 @@ def save_settings(update):
         SETTINGS.write_text(json.dumps(d, indent=1), encoding="utf-8")
     except OSError:
         pass
+
+
+# ---- actualizaciones: se mira version.json en GitHub y, si hay una mas nueva, se baja el instalador y se ejecuta en silencio ----
+UPDATE = {"state": "idle", "pct": 0, "error": "", "latest": "", "notes": "", "url": "", "sha256": ""}
+
+
+def _vt(v):
+    return tuple(int(x) for x in re.findall(r"\d+", str(v))[:4])
+
+
+def update_check():
+    """Consulta GitHub. Deja el resultado en UPDATE y lo devuelve."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(UPDATE_URL + f"?t={int(time.time())}", headers={"User-Agent": "PCRemote"})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        UPDATE.update(latest=str(d.get("version", "")), notes=str(d.get("notes", "")), url=str(d.get("exe", "")),
+                      sha256=str(d.get("exe_sha256", "")).lower(), error="")
+    except Exception as e:
+        UPDATE["error"] = "No se pudo comprobar (¿hay internet?)"
+        diag(f"actualizar: {e}")
+    return update_info()
+
+
+def update_info():
+    return {"current": VERSION, "latest": UPDATE["latest"], "notes": UPDATE["notes"], "state": UPDATE["state"],
+            "pct": UPDATE["pct"], "error": UPDATE["error"], "frozen": FROZEN,
+            "available": bool(UPDATE["latest"]) and _vt(UPDATE["latest"]) > _vt(VERSION)}
+
+
+def _update_worker():
+    import tempfile
+    import urllib.request
+    try:
+        dest = Path(tempfile.gettempdir()) / "PC-Remote-Instalador-nuevo.exe"
+        req = urllib.request.Request(UPDATE["url"], headers={"User-Agent": "PCRemote"})
+        h = hashlib.sha256()
+        with urllib.request.urlopen(req, timeout=30) as r, dest.open("wb") as f:
+            total = int(r.headers.get("Content-Length") or 0)
+            got = 0
+            while True:
+                chunk = r.read(256 * 1024)
+                if not chunk:
+                    break
+                f.write(chunk)
+                h.update(chunk)
+                got += len(chunk)
+                UPDATE["pct"] = int(got * 100 / total) if total else 0
+        if UPDATE["sha256"] and h.hexdigest() != UPDATE["sha256"]:
+            dest.unlink(missing_ok=True)
+            raise ValueError("la descarga esta corrupta (no coincide la huella)")
+        UPDATE.update(state="installing", pct=100)
+        time.sleep(0.8)   # la ventana alcanza a ensenar «Instalando»
+        try:   # la ventana del panel es otro proceso del mismo .exe: si queda abierta bloquea los archivos
+            for c in psutil.Process().children(recursive=True):
+                c.terminate()
+        except Exception:
+            pass
+        # /SILENT: solo la barra de progreso (Windows pedira permiso de administrador); al terminar abre el programa
+        subprocess.Popen([str(dest), "/SILENT", "/CLOSEAPPLICATIONS", "/NORESTART"], close_fds=True)
+        time.sleep(0.5)
+        os._exit(0)
+    except Exception as e:
+        diag(f"actualizar: {e}")
+        UPDATE.update(state="error", error=f"No se pudo actualizar: {e}")
+
+
+def update_start():
+    if not FROZEN:
+        UPDATE.update(state="error", error="En modo desarrollo no se actualiza solo")
+    elif UPDATE["state"] not in ("downloading", "installing") and UPDATE["url"]:
+        UPDATE.update(state="downloading", pct=0, error="")
+        threading.Thread(target=_update_worker, daemon=True).start()
+    return update_info()
 
 
 _window = None
@@ -963,6 +1078,10 @@ def make_app(token, live=False, details=None):
     app.router.add_get("/panel", panel_page)
     app.router.add_get("/panel/state", panel_state)
     app.router.add_post("/panel/bluetooth", panel_bluetooth)
+    app.router.add_get("/panel/qr.svg", panel_qr)
+    app.router.add_post("/panel/relaunch", panel_relaunch)
+    app.router.add_post("/panel/update/check", panel_update_check)
+    app.router.add_post("/panel/update/install", panel_update_install)
     app.router.add_post("/panel/screen", panel_screen)
     app.router.add_post("/panel/kick", panel_kick)
     app.router.add_get("/", index)
@@ -1013,7 +1132,8 @@ def setup_state(saved):
          "help": "Cable con «Depuración USB» activada en el móvil. Sin red y casi sin retraso."},
     ]
     hc = h264_choice()
-    return {"pc": socket.gethostname(), "vias": vias, "saved": saved, "encoder": hc[0] if hc else None}
+    return {"pc": socket.gethostname(), "vias": vias, "saved": saved, "encoder": hc[0] if hc else None,
+            "update": update_info()}
 
 
 def run_setup(saved, port, token):
@@ -1039,9 +1159,13 @@ def run_setup(saved, port, token):
     async def start(request):
         guard(request)
         b = await request.json()
-        https = bool(b.get("https"))
+        vias = [v for v in b.get("vias", []) if v in VIA_IDS]
+        if not vias:
+            raise web.HTTPBadRequest()
+        wifi = "wifi" in vias   # la pantalla del PC y el navegador solo existen por WiFi
+        https = wifi and bool(b.get("https"))
         ip = "127.0.0.1"   # el panel siempre se abre desde este mismo PC
-        result.update(https=https, pantalla=bool(b.get("pantalla")),
+        result.update(vias=vias, https=https, pantalla=wifi and bool(b.get("pantalla")),
                       panel_url=f"http://{ip}:{port}/panel?k={token}")
         return web.json_response({"panel_url": result["panel_url"]})
 
@@ -1050,6 +1174,16 @@ def run_setup(saved, port, token):
         app.router.add_get("/setup", page)
         app.router.add_get("/setup/state", state)
         app.router.add_post("/setup/start", start)
+
+        async def upd_check(request):
+            guard(request)
+            return web.json_response(await asyncio.get_running_loop().run_in_executor(None, update_check))
+
+        async def upd_install(request):
+            guard(request)
+            return web.json_response(update_start())
+        app.router.add_post("/setup/update/check", upd_check)
+        app.router.add_post("/setup/update/install", upd_install)
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, "127.0.0.1", 0)
@@ -1130,6 +1264,13 @@ def other_instance(port, token):
     return None
 
 
+def relaunch_setup():
+    """Cierra el programa y lo abre otra vez con la pantalla de inicio (para cambiar las vias de conexion)."""
+    exe = [sys.executable] if FROZEN else [sys.executable, str(Path(__file__).resolve())]
+    subprocess.Popen(exe + ["--preguntar"], cwd=str(APP_DIR))
+    os._exit(0)
+
+
 def start_tray(panel_url, port, token):
     """Icono junto al reloj: abrir el panel, ajustes de inicio o salir. El programa vive aqui cuando no hay ventana."""
     try:
@@ -1144,9 +1285,7 @@ def start_tray(panel_url, port, token):
         image = Image.new("RGB", (64, 64), "#4f8cff")
 
     def relaunch(_icon=None, _item=None):
-        exe = [sys.executable] if FROZEN else [sys.executable, str(Path(__file__).resolve())]
-        subprocess.Popen(exe + ["--preguntar"], cwd=str(APP_DIR))
-        os._exit(0)
+        relaunch_setup()
 
     def show_url(_icon=None, _item=None):
         open_panel_window(panel_url)
@@ -1235,20 +1374,23 @@ def main():
     # Con una ya elegida otra vez se arranca directo; si no, pantalla de inicio grafica
     # El servidor escucha en las tres vias a la vez (WiFi local, Bluetooth y cable): cada uno de los 6 moviles
     # puede entrar por la que le funcione. Con los ajustes ya guardados se arranca directo; si no, pantalla de inicio
-    quick = not args.sin_panel and "pantalla" in saved
+    quick = not args.sin_panel and bool(saved.get("vias"))
     choice = None
     if not args.sin_panel and not quick:
         try:
-            choice = run_setup(saved, args.port, token)
+            choice = run_setup(load_settings(), args.port, token)
         except KeyboardInterrupt:
             return
         if choice is None:
             return
-    host = "0.0.0.0"
+    vias = [v for v in ((choice and choice["vias"]) or saved.get("vias") or VIA_IDS) if v in VIA_IDS] or VIA_IDS
+    # Sin WiFi el servidor solo atiende a este mismo PC (el cable USB entra por localhost): nadie de la red puede llegar
+    host = "0.0.0.0" if "wifi" in vias else "127.0.0.1"
 
     use_https = args.https
     if use_https is None:
         use_https = choice["https"] if choice else saved.get("https", True)
+    use_https = bool(use_https) and "wifi" in vias
     ctx = None
     if use_https:
         try:
@@ -1259,17 +1401,21 @@ def main():
     screen = args.pantalla
     if screen is None:
         screen = choice["pantalla"] if choice else saved.get("pantalla", True)
-    save_settings({"pantalla": bool(screen), "https": bool(use_https)})
+    screen = bool(screen) and "wifi" in vias   # la pantalla solo llega por WiFi
+    save_settings({"vias": vias, "pantalla": screen, "https": bool(use_https)})
 
-    print(f"== PC Remote · WiFi local, Bluetooth y cable · puerto {args.port} ==")
+    print(f"== PC Remote {VERSION} · {', '.join(vias)} · puerto {args.port} ==")
     app = make_app(token, live=bool(screen), details={
         "pc": socket.gethostname(), "port": args.port,
-        "https": bool(use_https), "pin": token})
+        "https": bool(use_https), "pin": token, "vias": vias})
     panel_url = f"http://127.0.0.1:{args.port}/panel?k={token}"
-    threading.Thread(target=adb_watch, args=(args.port,), daemon=True).start()
+    if "adb" in vias:
+        threading.Thread(target=adb_watch, args=(args.port,), daemon=True).start()
 
     async def on_start(_app):
         try:
+            if "bluetooth" not in vias:
+                raise RuntimeError("Bluetooth no elegido")
             import btlink
             bt = btlink.BtServer(args.port, token, asyncio.get_running_loop(), diag)
             if bt.start():

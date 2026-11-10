@@ -12,9 +12,10 @@ Opcionalmente ves la pantalla del PC detrás de los botones del mando.
 | Móvil Android | App `PC-Remote.apk` | [Descargar APK](https://github.com/Davfre3/Pc-Remote/raw/main/releases/PC-Remote.apk) |
 | PC con Windows | Instalador `PC-Remote-Instalador.exe` | [Releases](https://github.com/Davfre3/Pc-Remote/releases) |
 
-1. Instala el programa en el PC (instala también el driver del mando virtual, ViGEmBus) y ábrelo.
+1. Instala el programa en el PC (instala también el driver del mando virtual, ViGEmBus) y ábrelo. Al iniciar eliges las conexiones que usarás (WiFi, Bluetooth, cable); el panel se adapta y solo en WiFi muestra un **QR**.
 2. Instala la app en el móvil (Android pedirá permitir «instalar apps desconocidas»).
-3. En la app elige cómo conectar: **Buscar PC en mi WiFi**, **Bluetooth** o **Cable USB**, y escribe el **PIN** que sale en el panel del PC. Elige tu mando y juega.
+3. En la app elige la misma vía: **WiFi** (escanea el QR o «Buscar PC»), **Bluetooth** o **Cable USB**, con el **PIN** del panel. Elige tu mando y juega.
+4. **Actualizar**: el programa del PC y la app avisan solos cuando hay versión nueva (botón «Actualizar»); se instala encima sin perder ajustes.
 
 Para WiFi, móvil y PC en la misma red. Para Bluetooth, el PC tiene que ser visible (el panel tiene un botón que abre la configuración de Bluetooth de Windows).
 

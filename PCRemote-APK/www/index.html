@@ -20,6 +20,17 @@
   .big { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:13px 14px; border-radius:14px; font-weight:700; margin-top:8px; background:var(--card2); border:1px solid var(--line); }
   .big.pri { background:var(--acc); border-color:var(--acc); color:#fff; }
   .big:active, .go:active { transform:scale(.98); }
+  .modes { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:5px; margin-bottom:6px; }
+  .modes button { padding:9px 4px; border-radius:10px; background:transparent; font-weight:700; font-size:13.5px; color:var(--mut); }
+  .modes button.cur { background:var(--acc); color:#fff; }
+  .mode { display:none; } .mode.cur { display:block; }
+  .upd { display:none; align-items:center; gap:10px; padding:10px 12px; margin:0 0 10px; border-radius:14px; background:rgba(79,140,255,.14); border:1px solid var(--acc); text-align:left; font-size:13px; }
+  .upd.show { display:flex; } .upd .t { flex:1; } .upd .t span { display:block; color:var(--mut); font-size:12px; }
+  .upd button { background:var(--acc); color:#fff; font-weight:700; padding:8px 12px; border-radius:10px; }
+  .upd button:disabled { background:var(--line); color:var(--mut); }
+  #scan { position:relative; width:100%; aspect-ratio:4/3; max-height:62vh; background:#000; border-radius:14px; overflow:hidden; }
+  #scan video { width:100%; height:100%; object-fit:cover; }
+  #scan::after { content:""; position:absolute; inset:18%; border:3px solid rgba(255,255,255,.85); border-radius:16px; }
   h2 { margin:0 0 8px; font-size:12px; letter-spacing:.09em; text-transform:uppercase; color:var(--mut); }
   .pc { display:flex; align-items:center; gap:12px; padding:12px 14px; margin-bottom:8px; border-radius:14px; background:var(--card); border:1px solid var(--line); }
   .pc .ic { font-size:26px; flex:none; }
@@ -69,11 +80,22 @@
   <section class="hero">
     <div class="logo">🎮</div>
     <h1>PC Remote</h1>
-    <div class="sub">Tu móvil como mando del PC · WiFi, Bluetooth o cable</div>
-    <button class="big pri" id="findbtn">📶 Buscar PC en mi WiFi</button>
-    <button class="big" id="btbtn">🔷 Bluetooth</button>
-    <button class="big" id="usbbtn">🔌 Cable USB</button>
-    <button class="big" id="manualbtn">⌨ Escribir dirección y PIN</button>
+    <div class="sub">Tu móvil como mando del PC · <span id="appver"></span></div>
+    <div class="upd" id="upd"><div class="t"><b id="updt"></b><span id="updd"></span></div><button id="updb">Actualizar</button></div>
+    <div class="modes" id="modes">
+      <button data-m="wifi">📶 WiFi</button><button data-m="bt">🔷 Bluetooth</button><button data-m="usb">🔌 Cable</button>
+    </div>
+    <div class="mode" data-m="wifi">
+      <button class="big pri" id="scanbtn">📷 Escanear código QR</button>
+      <button class="big" id="findbtn">🔎 Buscar PC en mi WiFi</button>
+      <button class="big" id="manualbtn">⌨ Escribir dirección y PIN</button>
+    </div>
+    <div class="mode" data-m="bt">
+      <button class="big pri" id="btbtn">🔷 Buscar el PC por Bluetooth</button>
+    </div>
+    <div class="mode" data-m="usb">
+      <button class="big pri" id="usbbtn">🔌 Buscar el PC por cable USB</button>
+    </div>
     <div id="status"></div>
   </section>
   <section>
@@ -81,6 +103,12 @@
     <div id="list"></div>
   </section>
 </div>
+
+<div class="ov" id="scanov"><div class="box">
+  <div id="scan"><video id="vid" playsinline muted></video></div>
+  <p class="hint" id="scanmsg">Apunta al código QR que sale en el panel de PC Remote del ordenador</p>
+  <div class="row"><button class="big" id="scanclose">Cancelar</button></div>
+</div></div>
 
 <div class="ov" id="manov"><div class="box">
   <h2 id="mantitle">Conectar con el PC</h2>
@@ -100,6 +128,7 @@
   <div class="row"><button class="big" id="btclose">Cerrar</button><button class="big pri" id="btagain">Buscar de nuevo</button></div>
 </div></div>
 
+<script src="jsQR.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const KEY = 'pcr_pcs', BT_UUID = '7a1f2b64-3c5d-4e8a-9b10-5043524d4f54';
@@ -117,7 +146,7 @@ function render() {
   if (!pcs.length) {
     L.innerHTML = `<div class="empty"><b>Aún no hay ningún PC.</b><ol>
       <li>Abre <b>PC Remote</b> en tu ordenador y mira el <b>PIN</b> del panel.</li>
-      <li>Pulsa <b>Buscar PC en mi WiFi</b>, <b>Bluetooth</b> o <b>Cable USB</b>.</li>
+      <li>Elige <b>WiFi</b> (escanea el QR), <b>Bluetooth</b> o <b>Cable</b>, la misma que elegiste en el PC.</li>
       <li>Elige tu PC, escribe el PIN y <b>juega</b>.</li></ol></div>`;
     return;
   }
@@ -184,6 +213,49 @@ function found(addr, name) {
   const [ip, port] = addr.split(':');
   ask({ title: 'Conectar con ' + (name || ip), ip, port }, (a, pin) => connect({ addr: a, pin, name: name || '' }));
 }
+
+// ---- QR del panel (solo WiFi): http://IP:PUERTO/?k=PIN ----
+function fromUrl(text) {
+  try {
+    const u = new URL(text.trim()), k = u.searchParams.get('k');
+    if (!/^https?:$/.test(u.protocol) || !u.hostname || !k) return null;
+    const port = u.protocol === 'https:' && u.port ? +u.port - 1 : (u.port || 8765);   // el https del navegador va en puerto + 1
+    return { addr: `${u.hostname}:${port}`, pin: k, name: '' };
+  } catch (e) { return null; }
+}
+let stream = null, scanning = false;
+async function startScan() {
+  $('scanmsg').textContent = 'Apunta al código QR que sale en el panel de PC Remote del ordenador';
+  $('scanov').classList.add('show');
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+  } catch (e) {
+    $('scanmsg').textContent = 'No se pudo abrir la cámara. Da permiso a la app o usa «Escribir dirección y PIN».';
+    return;
+  }
+  const v = $('vid'); v.srcObject = stream; await v.play().catch(() => {});
+  scanning = true;
+  const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+  (function tick() {
+    if (!scanning) return;
+    if (v.videoWidth) {
+      const sc = Math.min(1, 640 / v.videoWidth); cv.width = v.videoWidth * sc; cv.height = v.videoHeight * sc;
+      cx.drawImage(v, 0, 0, cv.width, cv.height);
+      const code = jsQR(cx.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height, { inversionAttempts: 'dontInvert' });
+      if (code) {
+        const p = fromUrl(code.data);
+        if (p) { stopScan(); const old = pcs.find(x => x.addr === p.addr); if (old) { old.pin = p.pin; connect(old); } else connect(p); return; }
+        $('scanmsg').textContent = 'Ese código no es de PC Remote. Usa el que sale en el panel del PC.';
+      }
+    }
+    setTimeout(tick, 120);
+  })();
+}
+function stopScan() {
+  scanning = false; $('scanov').classList.remove('show');
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+}
+$('scanbtn').onclick = startScan; $('scanclose').onclick = stopScan;
 
 // ---- buscar el PC en la WiFi (sin QR): se prueban las direcciones de la red del movil ----
 let finding = false;
@@ -309,6 +381,45 @@ function btPlay(p) {
   const P = BTP(); if (P) P.close().catch(() => {});
   location.href = 'pad.html?bt=' + encodeURIComponent(p.bt) + '&k=' + encodeURIComponent(p.pin) + '&n=' + encodeURIComponent(p.name || '');
 }
+// ---- la pantalla se adapta a la via elegida (WiFi, Bluetooth o cable); se recuerda la ultima ----
+function setMode(m) {
+  document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('cur', b.dataset.m === m));
+  document.querySelectorAll('.mode').forEach(d => d.classList.toggle('cur', d.dataset.m === m));
+  try { localStorage.setItem('pcr_mode', m); } catch (e) {}
+  say('');
+}
+document.querySelectorAll('#modes button').forEach(b => b.onclick = () => setMode(b.dataset.m));
+let mode = 'wifi'; try { mode = localStorage.getItem('pcr_mode') || 'wifi'; } catch (e) {}
+setMode(['wifi', 'bt', 'usb'].includes(mode) ? mode : 'wifi');
+
+// ---- actualizar la app: se mira version.json en GitHub; si hay una nueva se baja el APK y Android pide instalarla encima ----
+const UPDATE_URL = 'https://raw.githubusercontent.com/Davfre3/Pc-Remote/main/releases/version.json';
+const vt = v => (String(v).match(/\d+/g) || []).slice(0, 4).map(Number);
+const newer = (a, b) => { const x = vt(a), y = vt(b); for (let i = 0; i < 4; i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0; } return false; };
+async function checkUpdate() {
+  const P = BTP(); if (!P || !P.appVersion) return;
+  let cur = '';
+  try { cur = (await P.appVersion()).version; $('appver').textContent = 'v' + cur; } catch (e) { return; }
+  try {
+    const j = await (await fetch(UPDATE_URL + '?t=' + Date.now(), { signal: timeout(8000), cache: 'no-store' })).json();
+    if (!j.apk || !newer(j.version, cur)) return;
+    $('upd').classList.add('show');
+    $('updt').textContent = 'Versión nueva: ' + j.version;
+    $('updd').textContent = j.notes || 'Se instala encima y conserva tus PC guardados.';
+    $('updb').onclick = async () => {
+      $('updb').disabled = true; $('updd').textContent = 'Descargando… 0%';
+      const h = await P.addListener('updateProgress', e => { $('updd').textContent = 'Descargando… ' + e.pct + '%'; });
+      try {
+        await P.installApk({ url: j.apk });
+        $('updd').textContent = 'Pulsa «Instalar» en el aviso de Android.';
+      } catch (e) {
+        $('updd').textContent = errText(e); $('updb').disabled = false;
+      }
+      h.remove();
+    };
+  } catch (e) { /* sin internet: no pasa nada */ }
+}
+checkUpdate();
 render();
 </script>
 </body>

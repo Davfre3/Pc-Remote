@@ -346,4 +346,58 @@ public class BtPad extends Plugin {
         r.put("ips", ips);
         call.resolve(r);
     }
+
+    // ---------------- actualizar la app: baja el APK nuevo y deja que Android lo instale encima ----------------
+    @PluginMethod
+    public void appVersion(PluginCall call) {
+        JSObject r = new JSObject();
+        try {
+            r.put("version", getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0).versionName);
+        } catch (Exception e) { r.put("version", ""); }
+        call.resolve(r);
+    }
+
+    @PluginMethod
+    public void installApk(PluginCall call) {
+        final String url = call.getString("url");
+        if (url == null || !url.startsWith("https://")) { call.reject("Dirección de descarga no válida"); return; }
+        final Context ctx = getContext();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !ctx.getPackageManager().canRequestPackageInstalls()) {
+            // Primera vez: Android pide permitir a PC Remote instalar apps; luego se pulsa Actualizar otra vez
+            Intent s = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:" + ctx.getPackageName()));
+            s.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(s);
+            call.reject("Permite a PC Remote «instalar apps desconocidas» y pulsa Actualizar otra vez");
+            return;
+        }
+        new Thread(() -> {
+            java.io.File dir = new java.io.File(ctx.getCacheDir(), "update");
+            dir.mkdirs();
+            java.io.File apk = new java.io.File(dir, "PC-Remote.apk");
+            try {
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(30000);
+                int total = c.getContentLength(), got = 0, last = -1;
+                try (java.io.InputStream in = c.getInputStream(); java.io.FileOutputStream f = new java.io.FileOutputStream(apk)) {
+                    byte[] buf = new byte[64 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) > 0) {
+                        f.write(buf, 0, n);
+                        got += n;
+                        int pct = total > 0 ? (int) (got * 100L / total) : 0;
+                        if (pct != last) { last = pct; JSObject o = new JSObject(); o.put("pct", pct); notifyListeners("updateProgress", o); }
+                    }
+                }
+                android.net.Uri uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.getPackageName() + ".fileprovider", apk);
+                Intent i = new Intent(Intent.ACTION_VIEW);
+                i.setDataAndType(uri, "application/vnd.android.package-archive");
+                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(i);
+                call.resolve();
+            } catch (Exception e) {
+                call.reject("No se pudo descargar la actualización: " + e.getMessage());
+            }
+        }).start();
+    }
 }

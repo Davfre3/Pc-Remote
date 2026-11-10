@@ -61,6 +61,13 @@
   .tabs button.offt { opacity:.6; border-style:dashed; }
   .chint { color:var(--mut); font-size:13px; margin:12px 0 0; min-height:1.3em; white-space:pre-line; }
   .note { color:var(--mut); font-size:12.5px; margin:12px 0 0; }
+  .qrbox { display:flex; gap:14px; align-items:center; margin-top:14px; padding:12px; border-radius:14px; background:var(--card2); border:1px solid var(--line); }
+  .qrbox img { width:132px; height:132px; flex:none; background:#fff; border-radius:10px; padding:6px; }
+  .qrbox span { color:var(--mut); font-size:13px; }
+  .upbar { display:none; align-items:center; gap:12px; padding:11px 16px; margin-bottom:16px; border-radius:14px; background:rgba(79,140,255,.12); border:1px solid var(--acc); }
+  .upbar.show { display:flex; } .upbar .t { flex:1; } .upbar .t span { display:block; color:var(--mut); font-size:12.5px; }
+  .btn:disabled { background:var(--line); color:var(--mut); cursor:default; }
+  .bar { height:6px; border-radius:99px; background:var(--line); margin-top:8px; overflow:hidden; } .bar i { display:block; height:100%; width:0; background:var(--ok); transition:width .3s; }
 </style>
 </head>
 <body>
@@ -70,6 +77,8 @@
   <div class="pill" id="status"><span class="dot"></span><span id="stxt">Cargando…</span></div>
 </header>
 
+<div class="upbar" id="upbar"><div class="t"><b id="upt"></b><span id="upd2"></span></div><button class="btn" id="upgo">Actualizar ahora</button></div>
+
 <div class="grid">
   <section class="card">
     <h2>Conectar un móvil · hasta 6</h2>
@@ -78,6 +87,7 @@
     <div class="cred"><div class="k">PIN</div><div class="v pin" id="cpin">—</div></div>
     <div class="chint" id="chint"></div>
     <button class="btn alt" id="btvis" hidden style="margin-top:12px">Hacer visible el PC por Bluetooth</button>
+    <div class="qrbox" id="qrbox" hidden><img id="qrimg" alt="Código QR"><span>En la app: <b>Buscar PC en mi WiFi</b> o <b>Escanear QR</b> con este código (ya incluye el PIN).</span></div>
     <div id="webbox">
       <div class="lbl2">Sin la app (navegador del móvil)</div>
       <div class="addr"><code id="url"></code><button class="btn" id="copy">Copiar</button></div>
@@ -92,7 +102,7 @@
 </div>
 
 <div class="row2">
-  <section class="card">
+  <section class="card" id="scrcard">
     <h2>Pantalla en el móvil</h2>
     <div class="opt">
       <div class="t"><b>Ver la pantalla del PC</b><span id="enc">Detrás de los botones del mando</span></div>
@@ -105,8 +115,14 @@
       <dt>Vías abiertas</dt><dd id="via">—</dd>
       <dt>Puerto</dt><dd id="addr">—</dd>
       <dt>PIN</dt><dd id="pin">—</dd>
-      <dt>Giroscopio en navegador</dt><dd id="https">—</dd>
+      <dt id="httpsk">Giroscopio en navegador</dt><dd id="https">—</dd>
+      <dt>Versión</dt><dd id="ver">—</dd>
     </dl>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+      <button class="btn alt" id="chk">Buscar actualizaciones</button>
+      <button class="btn alt" id="chg">Cambiar conexiones</button>
+    </div>
+    <div class="note" id="chkmsg"></div>
   </section>
 </div>
 <div id="toast"></div>
@@ -126,6 +142,16 @@ function mmss(s) { return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, 
 
 const curConn = () => last && (last.connections || []).find(c => c.id === selConn);
 $('copy').onclick = () => { const c = curConn(); navigator.clipboard.writeText(c ? c.web_url : '').then(() => toast('Dirección copiada')).catch(() => toast('No se pudo copiar')); };
+$('chg').onclick = async () => { await fetch(q('/panel/relaunch'), { method:'POST' }).catch(() => {}); toast('Volviendo a la pantalla de inicio…'); };
+$('chk').onclick = async () => {
+  $('chkmsg').textContent = 'Buscando…';
+  try {
+    const u = await (await fetch(q('/panel/update/check'), { method:'POST' })).json();
+    $('chkmsg').textContent = u.error || (u.available ? 'Hay una versión nueva: ' + u.latest : 'Ya tienes la última versión (' + u.current + ').');
+  } catch (e) { $('chkmsg').textContent = 'No se pudo comprobar.'; }
+  refresh();
+};
+$('upgo').onclick = async () => { await fetch(q('/panel/update/install'), { method:'POST' }).catch(() => {}); refresh(); };
 $('btvis').onclick = async () => {
   try { const r = await (await fetch(q('/panel/bluetooth'), { method:'POST' })).json(); toast(r.ok ? 'Deja abierta la pantalla de Bluetooth mientras el móvil busca' : 'No se pudo abrir Bluetooth'); }
   catch (e) { toast('No se pudo abrir Bluetooth'); }
@@ -160,8 +186,25 @@ function render(s) {
   $('cpin').textContent = s.pin || '—';
   $('chint').textContent = !cur ? '' : cur.off ? 'No detectada todavía:\n' + cur.steps : cur.hint + '\n' + (STEPS[cur.kind] || '');
   $('btvis').hidden = !bt;
-  $('webbox').hidden = !live || cur.kind === 'ADB';
-  $('url').textContent = live ? cur.web_url : '';
+  const wifi = live && cur.kind === 'WiFi';   // el QR y la direccion web solo existen en la pestaña WiFi
+  $('webbox').hidden = !wifi;
+  $('qrbox').hidden = !wifi;
+  if (wifi) {
+    $('url').textContent = cur.web_url;
+    const src = q('/panel/qr.svg?i=' + encodeURIComponent(cur.id));
+    if ($('qrimg').dataset.src !== src) { $('qrimg').dataset.src = src; $('qrimg').src = src; }
+  } else $('url').textContent = '';
+  $('scrcard').hidden = !(s.vias || []).includes('wifi');   // la pantalla del PC solo viaja por WiFi
+  $('httpsk').parentElement.querySelectorAll('#httpsk,#https').forEach(e => e.hidden = !(s.vias || []).includes('wifi'));
+  const u = s.update || {};
+  $('ver').textContent = s.version || '—';
+  $('upbar').classList.toggle('show', !!u.available);
+  if (u.available) {
+    $('upt').textContent = 'Hay una versión nueva de PC Remote: ' + u.latest + ' (tienes la ' + u.current + ')';
+    $('upd2').textContent = u.state === 'downloading' ? 'Descargando… ' + u.pct + '%' : u.state === 'installing' ? 'Instalando… el programa se reabrirá solo'
+      : u.error || (u.notes || 'Se instala encima y conserva tus ajustes.');
+    $('upgo').disabled = u.state === 'downloading' || u.state === 'installing';
+  }
 
   const n = s.players.filter(Boolean).length;
   $('status').classList.toggle('on', n > 0);
@@ -197,6 +240,7 @@ async function refresh() {
   catch (e) { $('stxt').textContent = 'Sin conexión con el servidor'; $('status').classList.remove('on'); }
 }
 refresh(); setInterval(() => { if (!Object.keys(sure).length) refresh(); }, 1000);
+fetch(q('/panel/update/check'), { method:'POST' }).catch(() => {});   // al abrir, mira si hay version nueva
 </script>
 </body>
 </html>

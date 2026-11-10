@@ -1,7 +1,13 @@
 ; Instalador de PC Remote (Inno Setup 6). Instala el programa, el driver ViGEmBus y abre el puerto en el firewall.
 [Setup]
+; AppId igual al de la 1.0 (el nombre): instalar una version nueva se pone ENCIMA de la anterior (actualiza), sin desinstalar
+AppId=PC Remote
 AppName=PC Remote
-AppVersion=1.0
+AppVersion=1.1.0
+VersionInfoVersion=1.1.0
+CloseApplications=yes
+RestartApplications=no
+UsePreviousAppDir=yes
 AppPublisher=PC Remote
 DefaultDirName={autopf}\PC Remote
 DefaultGroupName=PC Remote
@@ -35,7 +41,7 @@ Name: "{commonstartup}\PC Remote"; Filename: "{app}\PC Remote.exe"; Tasks: autos
 Filename: "msiexec.exe"; Parameters: "/i ""{app}\_internal\vgamepad\win\vigem\install\x64\ViGEmBusSetup_x64.msi"" /passive /norestart"; StatusMsg: "Instalando el driver del mando virtual (ViGEmBus)..."; Flags: waituntilterminated
 ; Los moviles de la red local entran por estos puertos
 Filename: "netsh.exe"; Parameters: "advfirewall firewall add rule name=""PC Remote"" dir=in action=allow protocol=TCP localport=8765-8766 profile=private"; Flags: runhidden
-Filename: "{app}\PC Remote.exe"; Description: "Abrir PC Remote"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\PC Remote.exe"; Description: "Abrir PC Remote"; Flags: postinstall nowait
 
 [UninstallRun]
 Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""PC Remote"""; Flags: runhidden; RunOnceId: "PCRemoteFw"

@@ -16,13 +16,19 @@
   .sub { color:var(--mut); }
   h2 { margin:26px 0 12px; font-size:13px; letter-spacing:.09em; text-transform:uppercase; color:var(--mut); font-weight:700; }
   .vias { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px; }
-  .via { text-align:left; display:flex; gap:14px; align-items:flex-start; padding:16px; border-radius:16px; background:var(--card); border:2px solid var(--line); font:inherit; color:var(--txt); cursor:default; transition:opacity .12s; }
+  .via { text-align:left; display:flex; gap:14px; align-items:flex-start; padding:16px; border-radius:16px; background:var(--card); border:2px solid var(--line); font:inherit; color:var(--txt); cursor:pointer; transition:border-color .12s, background .12s; position:relative; user-select:none; }
+  .via.sel { border-color:var(--acc); background:var(--card2); }
+  .via .ck { position:absolute; top:12px; right:12px; width:24px; height:24px; border-radius:7px; border:2px solid var(--line); display:grid; place-items:center; font-size:15px; font-weight:800; color:transparent; }
+  .via.sel .ck { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .upd { display:none; align-items:center; gap:12px; padding:12px 16px; margin-bottom:18px; border-radius:14px; background:rgba(79,140,255,.12); border:1px solid var(--acc); }
+  .upd.show { display:flex; } .upd .t { flex:1; } .upd .t span { display:block; color:var(--mut); font-size:13px; }
+  .upd button { background:var(--acc); color:#fff; border:0; border-radius:10px; font:700 14px system-ui,sans-serif; padding:9px 16px; cursor:pointer; }
+  .upd button:disabled { background:var(--line); color:var(--mut); cursor:default; }
   .via .ic { font-size:30px; line-height:1; flex:none; margin-top:2px; }
   .via b { display:block; font-size:16px; }
   .via .st { font-size:13px; font-weight:700; margin:2px 0 4px; color:var(--mut); }
   .via .st.ok { color:var(--ok); }
   .via .hp { font-size:12.5px; color:var(--mut); }
-  .via.off { opacity:.6; }
   .opts { display:grid; gap:10px; }
   .opt { display:flex; align-items:center; gap:14px; padding:14px 16px; border-radius:16px; background:var(--card); border:1px solid var(--line); }
   .opt .t { flex:1; } .opt .t b { display:block; } .opt .t span { color:var(--mut); font-size:13px; }
@@ -48,40 +54,58 @@
   <div class="sub" id="pc">Convierte tu móvil en un mando para este PC</div>
 </header>
 
-<h2>Vías de conexión (se abren todas a la vez, hasta 6 móviles)</h2>
+<div class="upd" id="upd"><div class="t"><b id="updt">Hay una versión nueva</b><span id="updd"></span></div><button id="updb">Actualizar</button></div>
+
+<h2>¿Cómo vas a conectar los móviles? (elige una o varias · hasta 6 móviles)</h2>
 <div class="vias" id="vias"></div>
 
-<h2>Opciones</h2>
-<div class="opts">
-  <div class="opt"><div class="t"><b>Ver la pantalla del PC en el móvil</b><span id="encdesc">Se ve detrás de los botones del mando</span></div><button class="sw" id="scr" aria-label="Ver la pantalla en el móvil"></button></div>
+<h2 id="opth">Opciones</h2>
+<div class="opts" id="opts">
+  <div class="opt" id="scrrow"><div class="t"><b>Ver la pantalla del PC en el móvil</b><span id="encdesc">Se ve detrás de los botones del mando</span></div><button class="sw" id="scr" aria-label="Ver la pantalla en el móvil"></button></div>
   <div class="opt" id="httpsrow"><div class="t"><b>Giroscopio en el navegador (HTTPS)</b><span id="httpsdesc">Solo si usas el navegador en vez de la app. La app de PC Remote no lo necesita.</span></div><button class="sw" id="https" aria-label="HTTPS"></button></div>
 </div>
 
 <button class="go" id="go">Iniciar</button>
 <div class="note" id="note"><span class="spin"></span>Buscando conexiones…</div>
+<div class="note" id="ver"></div>
 
 <div id="busy"><div><div class="spin"></div><div id="busytxt">Iniciando…</div></div></div>
 
 <script>
 const $ = id => document.getElementById(id), K = new URLSearchParams(location.search).get('k') || '';
 const ICONS = { wifi:'📶', bluetooth:'🔷', adb:'🔌' };
-let st = null, scr = true, https = true, started = false;
+let st = null, scr = true, https = true, started = false, sel = null;
 
 function paint() {
   if (!st) return;
+  if (!sel) { const sv = st.saved.vias; sel = new Set(sv && sv.length ? sv : ['wifi']); }
   $('vias').innerHTML = '';
   for (const v of st.vias) {
     const b = document.createElement('div');
-    b.className = 'via' + (v.detected ? '' : ' off');
-    b.innerHTML = `<div class="ic">${ICONS[v.id]}</div><div><b>${v.name}</b><div class="st ${v.detected ? 'ok' : ''}">${v.detected ? '● Lista' + (v.ip ? ' · ' + v.ip : '') : '○ Aún no detectada (se activa sola al detectarla)'}</div><div class="hp">${v.help}</div></div>`;
+    b.className = 'via' + (sel.has(v.id) ? ' sel' : '');
+    b.setAttribute('role', 'checkbox'); b.setAttribute('aria-checked', sel.has(v.id));
+    b.innerHTML = `<div class="ck">✓</div><div class="ic">${ICONS[v.id]}</div><div><b>${v.name}</b><div class="st ${v.detected ? 'ok' : ''}">${v.detected ? '● Lista' + (v.ip ? ' · ' + v.ip : '') : '○ Aún no detectada (se activa sola al detectarla)'}</div><div class="hp">${v.help}</div></div>`;
+    b.onclick = () => { sel.has(v.id) ? sel.delete(v.id) : sel.add(v.id); paint(); };
     $('vias').appendChild(b);
   }
+  const wifi = sel.has('wifi');
+  $('opts').style.display = $('opth').style.display = wifi ? '' : 'none';   // pantalla y navegador solo existen por WiFi
   $('scr').classList.toggle('on', scr);
   $('https').classList.toggle('on', https);
-  $('encdesc').textContent = st.encoder ? `Se ve detrás de los botones (solo por WiFi) · vídeo H.264 (${st.encoder})` : 'Se ve detrás de los botones del mando (solo por WiFi)';
-  $('go').disabled = started;
+  $('encdesc').textContent = st.encoder ? `Se ve detrás de los botones · vídeo H.264 (${st.encoder})` : 'Se ve detrás de los botones del mando';
+  $('go').disabled = started || !sel.size;
+  $('go').textContent = sel.size ? 'Iniciar' : 'Elige al menos una conexión';
   $('note').textContent = '';
   $('pc').textContent = 'Convierte tu móvil en un mando para ' + (st.pc || 'este PC');
+  const u = st.update || {};
+  $('ver').textContent = u.current ? 'PC Remote ' + u.current : '';
+  $('upd').classList.toggle('show', !!u.available);
+  if (u.available) {
+    $('updt').textContent = 'Hay una versión nueva: ' + u.latest;
+    $('updd').textContent = u.state === 'downloading' ? 'Descargando… ' + u.pct + '%' : u.state === 'installing' ? 'Instalando… el programa se reabrirá solo'
+      : u.error || (u.notes || 'Se instala encima, sin perder tus ajustes.');
+    $('updb').disabled = u.state === 'downloading' || u.state === 'installing';
+  }
 }
 async function poll() {
   try {
@@ -89,14 +113,16 @@ async function poll() {
     st = await (await fetch('/setup/state?k=' + K)).json();
     if (first) { if (st.saved.pantalla !== undefined) scr = !!st.saved.pantalla; if (st.saved.https !== undefined) https = !!st.saved.https; }
     paint();
+    if (first) fetch('/setup/update/check?k=' + K, { method:'POST' }).catch(() => {});   // mira si hay version nueva (sale en el siguiente sondeo)
   } catch (e) {}
 }
+$('updb').onclick = () => fetch('/setup/update/install?k=' + K, { method:'POST' }).catch(() => {});
 $('scr').onclick = () => { scr = !scr; paint(); };
 $('https').onclick = () => { https = !https; paint(); };
 $('go').onclick = async () => {
-  if (started) return;
+  if (started || !sel.size) return;
   started = true; $('busy').classList.add('show');
-  const r = await fetch('/setup/start?k=' + K, { method:'POST', body:JSON.stringify({ https, pantalla:scr }) });
+  const r = await fetch('/setup/start?k=' + K, { method:'POST', body:JSON.stringify({ vias:[...sel], https, pantalla:scr }) });
   const { panel_url } = await r.json();
   // El servidor tarda un poco en arrancar: se espera a que conteste y entonces esta misma ventana pasa al panel
   for (let i = 0; i < 100; i++) {

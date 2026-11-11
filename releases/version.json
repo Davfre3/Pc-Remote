@@ -1,7 +1,7 @@
 {
-  "version": "1.1.1",
-  "notes": "adb ya no se queda abierto al cerrar el programa.",
+  "version": "1.1.4",
+  "notes": "Imagen con mucho menos retraso (60 fps), palanca flotante, volumen como gatillos y edición de la cruceta en bloque.",
   "exe": "https://github.com/Davfre3/Pc-Remote/releases/latest/download/PC-Remote-Instalador.exe",
-  "exe_sha256": "4c96251fa5b4f534878149b80689cb4d62f19d6b83ca1878a97691d61bea8a20",
+  "exe_sha256": "262d562cca85e2521b2330257d9261292961a123764eac123dd533640d9b8e35",
   "apk": "https://github.com/Davfre3/Pc-Remote/raw/main/releases/PC-Remote.apk"
 }

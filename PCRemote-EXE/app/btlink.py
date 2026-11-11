@@ -60,7 +60,8 @@ class WSAQUERYSET(ctypes.Structure):
 
 ws2.socket.restype = ctypes.c_size_t
 ws2.accept.restype = ctypes.c_size_t
-for fn in (ws2.bind, ws2.getsockname, ws2.listen, ws2.accept, ws2.recv, ws2.send, ws2.closesocket):
+SOL_RFCOMM, SO_BTH_AUTHENTICATE = 3, 0x80000001
+for fn in (ws2.bind, ws2.getsockname, ws2.listen, ws2.accept, ws2.recv, ws2.send, ws2.closesocket, ws2.setsockopt):
     fn.argtypes = None
 
 
@@ -87,6 +88,7 @@ class BtServer:
         self.channel = 0
         self._reg = None
         self.peers = 0
+        self.authed = False   # True: Windows exige que el movil este emparejado, y entonces no hace falta PIN
 
     def start(self):
         data = ctypes.create_string_buffer(512)
@@ -101,11 +103,15 @@ class BtServer:
         n = ctypes.c_int(ctypes.sizeof(addr))
         ws2.getsockname(_sock_arg(s), ctypes.byref(addr), ctypes.byref(n))
         self.channel = int(addr.port)
+        # Solo moviles emparejados con este PC (el emparejamiento ya es la confirmacion): asi se conecta sin escribir PIN
+        one = ctypes.c_ulong(1)
+        self.authed = ws2.setsockopt(_sock_arg(s), SOL_RFCOMM, SO_BTH_AUTHENTICATE, ctypes.byref(one), ctypes.sizeof(one)) == 0
         if ws2.listen(_sock_arg(s), 8) != 0:
             ws2.closesocket(_sock_arg(s))
             return False
         self.sock = s
         self._advertise(addr)
+        self.log(f"bluetooth: escuchando en el canal {self.channel}; solo emparejados: {'si' if self.authed else 'no (pide PIN)'}")
         threading.Thread(target=self._accept_loop, daemon=True).start()
         return True
 
@@ -163,18 +169,37 @@ class BtServer:
         data = (text + "\n").encode("utf-8")
         ws2.send(_sock_arg(c), data, len(data), 0)
 
+    def _linger(self, c):
+        """Tras una respuesta final (PIN incorrecto, comprobacion) no se cierra al instante: si el PC corta nada mas
+        escribir, Android puede perder la respuesta sin leer y el movil cree que el PC no contesto. Se espera a que
+        cierre el movil (lo hace en cuanto lee la respuesta), como mucho 2 s."""
+        ms = ctypes.c_ulong(2000)
+        ws2.setsockopt(_sock_arg(c), 0xFFFF, 0x1006, ctypes.byref(ms), ctypes.sizeof(ms))   # SOL_SOCKET, SO_RCVTIMEO
+        t0 = time.monotonic()
+        chunk = ctypes.create_string_buffer(256)
+        while time.monotonic() - t0 < 2 and ws2.recv(_sock_arg(c), chunk, 256, 0) > 0:
+            pass
+
     def _peer(self, c):
         buf = bytearray()
         try:
             first = self._recv_line(c, buf)
-            hello = json.loads(first) if first else {}
-            if hello.get("k") != self.token:
+            try:
+                hello = json.loads(first) if first else {}
+            except ValueError:
+                hello = {}
+            if not isinstance(hello, dict):
+                hello = {}
+            # Con el PIN correcto se entra siempre; sin el, solo si Windows ya exige que el movil este emparejado
+            if hello.get("k") != self.token and not (self.authed and hello):
                 self.log("bluetooth: PIN incorrecto" if hello else "bluetooth: el otro lado no habla PC Remote")
                 self._send_line(c, json.dumps({"t": "auth"}))
+                self._linger(c)
                 return
             self._send_line(c, json.dumps({"t": "btok"}))
             if hello.get("probe"):   # solo comprobar canal y PIN desde la pantalla de inicio de la app: no crea jugador
                 self.log("bluetooth: comprobacion correcta")
+                self._linger(c)
                 return
             self.log(f"bluetooth: movil aceptado ({hello.get('c', '')})")
             fut = asyncio.run_coroutine_threadsafe(self._bridge(c, buf, hello), self.loop)
@@ -193,7 +218,7 @@ class BtServer:
                     async for m in ws:
                         if m.type == aiohttp.WSMsgType.TEXT:
                             await loop.run_in_executor(None, self._send_line, c, m.data)
-                    ws2.closesocket(_sock_arg(c))
+                    # al terminar (expulsado desde el panel, servidor cerrado) el canal lo cierra _peer, una sola vez
 
                 async def up():   # movil -> PC
                     while True:

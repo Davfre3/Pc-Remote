@@ -3,8 +3,8 @@
 ; AppId igual al de la 1.0 (el nombre): instalar una version nueva se pone ENCIMA de la anterior (actualiza), sin desinstalar
 AppId=PC Remote
 AppName=PC Remote
-AppVersion=1.1.1
-VersionInfoVersion=1.1.1
+AppVersion=1.1.3
+VersionInfoVersion=1.1.3
 CloseApplications=yes
 RestartApplications=no
 UsePreviousAppDir=yes

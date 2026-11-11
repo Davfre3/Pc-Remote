@@ -45,6 +45,8 @@
   #status.err { color:var(--bad); } #status.ok { color:var(--ok); }
   .ov { position:fixed; inset:0; background:rgba(0,0,0,.88); display:none; place-items:center; z-index:5; padding:16px; }
   .ov.show { display:grid; }
+  #manov { z-index:6; }   /* el PIN se pide tambien desde la lista de Bluetooth: tiene que quedar por encima de ella */
+  #manerr { color:var(--bad); font-size:13px; margin-top:8px; min-height:1.3em; }
   .box { width:min(100%,460px); max-height:100%; overflow-y:auto; background:var(--card); border:1px solid var(--line); border-radius:18px; padding:16px; }
   label { display:block; font-size:12.5px; color:var(--mut); margin:10px 0 4px; }
   input { width:100%; font:inherit; color:var(--txt); background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:11px 12px; }
@@ -117,6 +119,7 @@
     <div class="f-port"><label for="port">Puerto</label><input id="port" inputmode="numeric" value="8765"></div>
     <div class="f-pin"><label for="pin">PIN (en el panel del PC)</label><input id="pin" autocomplete="off" autocapitalize="none" placeholder="a1b2c3"></div>
   </div>
+  <div id="manerr"></div>
   <div class="row"><button class="big" id="manclose">Cancelar</button><button class="big pri" id="mango">Conectar</button></div>
 </div></div>
 
@@ -162,20 +165,23 @@ function render() {
 }
 
 // ---- credenciales: dirección (si hace falta) y PIN ----
-let askCb = null;
-function ask({ title, ip = '', port = '8765', pin = '', manual = false }, cb) {
+// pinOnly: por Bluetooth no hay direccion que escribir, solo el PIN
+let askCb = null, askPinOnly = false;
+function ask({ title, ip = '', port = '8765', pin = '', manual = false, pinOnly = false }, cb) {
   $('mantitle').textContent = title;
   $('manfields').classList.toggle('nomanual', !manual);
-  $('ip').value = ip; $('port').value = port; $('pin').value = pin;
-  askCb = cb; $('manov').classList.add('show');
+  $('ip').value = ip; $('port').value = port; $('pin').value = pin; $('manerr').textContent = '';
+  askCb = cb; askPinOnly = pinOnly; $('manov').classList.add('show');
   setTimeout(() => $(manual && !ip ? 'ip' : 'pin').focus(), 150);
 }
 $('manclose').onclick = () => { $('manov').classList.remove('show'); askCb = null; };
 $('mango').onclick = () => {
   const ip = $('ip').value.trim(), port = $('port').value.trim() || '8765', pin = $('pin').value.trim();
-  if (!/^[\w.\-]+$/.test(ip) || !/^\d{2,5}$/.test(port) || !pin) { say('Escribe la dirección, el puerto y el PIN.', 'err'); return; }
+  // el aviso sale dentro del propio cuadro: el de la pantalla de inicio queda tapado y no se veia
+  if (!pin) { $('manerr').textContent = 'Escribe el PIN que sale en el panel del PC.'; return; }
+  if (!askPinOnly && (!/^[\w.\-]+$/.test(ip) || !/^\d{2,5}$/.test(port))) { $('manerr').textContent = 'Escribe la dirección y el puerto del PC.'; return; }
   const cb = askCb; $('manov').classList.remove('show'); askCb = null;
-  if (cb) cb(`${ip}:${port}`, pin);
+  if (cb) cb(askPinOnly ? '' : `${ip}:${port}`, pin);
 };
 for (const id of ['ip', 'port', 'pin']) $(id).addEventListener('focus', () => setTimeout(() => $(id).scrollIntoView({ block:'center' }), 300));
 $('pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('mango').click(); });
@@ -350,10 +356,9 @@ async function btPick(d) {
     btStatus('Emparejando con ' + (d.name || d.address) + '… acepta el aviso en el móvil y en el PC', false, true);
     try { await P.pair({ address: d.address }); d.paired = true; drawBt(); } catch (e) { btStatus(errText(e), true); return; }
   }
+  // Un toque en el PC y se conecta: el emparejamiento ya es la confirmacion. Solo si el PC pide PIN, se pregunta
   const known = pcs.find(x => x.bt === d.address);
-  if (known && known.pin) { btProbe({ ...known, name: d.name || known.name }); return; }
-  btStatus('');
-  ask({ title: 'Conectar con ' + (d.name || 'el PC') + ' por Bluetooth' }, (a, pin) => btProbe({ bt: d.address, name: d.name || '', pin }));
+  btProbe({ ...(known || {}), bt: d.address, name: d.name || (known && known.name) || '', pin: (known && known.pin) || '' });
 }
 
 // Se comprueba el canal y el PIN antes de abrir el mando (el PC contesta y cierra sin crear jugador)
@@ -366,8 +371,11 @@ async function btProbe(p) {
   } catch (e) {
     h.remove();
     const m = errText(e);
-    btStatus(m, true);
-    if (/PIN/.test(m)) { delete p.pin; ask({ title: 'PIN incorrecto: míralo en el panel del PC' }, (a, pin) => btProbe({ ...p, pin })); }
+    if (/PIN/.test(m)) {   // el PC pide PIN (o el guardado ya no vale): se pregunta y se vuelve a probar
+      const had = !!p.pin;
+      btStatus(had ? 'El PIN no es correcto.' : 'Este PC pide el PIN de su panel.', had);
+      ask({ title: had ? 'PIN incorrecto: míralo en el panel del PC' : 'Escribe el PIN que sale en el panel del PC', pinOnly: true }, (a, pin) => btProbe({ ...p, pin }));
+    } else btStatus(m, true);
     return;
   }
   h.remove(); await P.close().catch(() => {});
@@ -421,6 +429,16 @@ async function checkUpdate() {
 }
 checkUpdate();
 render();
+
+// El mando vuelve aqui (?btpin=direccion) cuando el PC rechaza por Bluetooth el PIN guardado: se pide el nuevo y se reconecta
+(() => {
+  const addr = new URLSearchParams(location.search).get('btpin'), p = addr && pcs.find(x => x.bt === addr);
+  if (!p || !BTP()) return;
+  history.replaceState(null, '', 'index.html');
+  setMode('bt'); btDevs = new Map(); drawBt(); $('btov').classList.add('show');
+  btStatus('El PIN guardado de ' + (p.name || 'este PC') + ' ya no vale.', true);
+  ask({ title: 'PIN incorrecto: míralo en el panel del PC', pinOnly: true }, (a, pin) => btProbe({ ...p, pin }));
+})();
 </script>
 </body>
 </html>

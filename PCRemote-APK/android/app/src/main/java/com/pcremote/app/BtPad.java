@@ -275,7 +275,7 @@ public class BtPad extends Plugin {
                         lastErr = e.getMessage() == null ? e.toString() : e.getMessage();
                         if (s != null) try { s.close(); } catch (Exception ignored) { }
                         // un fallo lento es que el PC no se alcanza (apagado, lejos, sin emparejar): no tiene sentido seguir
-                        if (SystemClock.elapsedRealtime() - t0 > 7000) { lastErr = "el PC no responde por Bluetooth (¿está cerca, con el Bluetooth activo y emparejado?)"; break; }
+                        if (m >= 2 && SystemClock.elapsedRealtime() - t0 > 7000) { lastErr = "el PC no responde por Bluetooth (¿está cerca, con el Bluetooth activo y emparejado?)"; break; }
                     }
                 }
             } catch (Exception e) {

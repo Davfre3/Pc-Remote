@@ -11,18 +11,27 @@
 <style>
   /* Todo el mando se dibuja en "u": 1u = 1/80 del ancho o 1/32 del alto (el menor), asi que
      escala igual en cualquier movil y los botones nunca se solapan. --u lo fija el script. */
-  :root { --bg:#111418; --btn:#2a3038; --on:#4f8cff; --txt:#e8ecf2; --u:10px; --sl:0px; --sr:0px; }
+  /* --ga = opacidad del fondo de todos los botones (ajuste "Transparencia"); --ta la de un boton concreto (editor) */
+  :root { --bg:#111418; --btn:#2a3038; --on:#4f8cff; --txt:#e8ecf2; --u:10px; --sl:0px; --sr:0px; --ga:100%; --gn:1; }
   * { box-sizing:border-box; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; }
   html,body { overscroll-behavior:none; margin:0; height:100%; background:var(--bg); color:var(--txt); font-family:system-ui,sans-serif; overflow:hidden; }
   #probe { position:fixed; visibility:hidden; padding-left:env(safe-area-inset-left,0px); padding-right:env(safe-area-inset-right,0px); }
   #pad { position:fixed; left:0; right:0; top:50%; height:calc(var(--u)*32); transform:translateY(-50%); }
-  .b { position:absolute; display:grid; place-items:center; align-content:center; line-height:1.1; background:var(--btn); border-radius:50%; font-weight:700; font-size:calc(var(--u)*var(--f,2.8)); }
+  .b { position:absolute; display:grid; place-items:center; align-content:center; line-height:1.1; border-radius:50%; font-weight:700; font-size:calc(var(--u)*var(--f,2.8));
+    background:var(--btn); background:color-mix(in srgb, var(--btn) var(--ta, var(--ga)), transparent); }
   .b small { display:block; font-size:.4em; font-weight:600; opacity:.8; letter-spacing:.02em; }
   .b.sq { border-radius:calc(var(--u)*1.2); }
   .b.on { background:var(--on); filter:brightness(1.4); }
   .b.cap small { font-size:.5em; font-weight:500; margin-top:.15em; }
-  .stick { position:absolute; border-radius:50%; background:#1b2027; border:2px solid #3a424d; }
-  .knob { position:absolute; width:46%; height:46%; left:27%; top:27%; border-radius:50%; background:#4a5463; }
+  .stick { position:absolute; border-radius:50%; border:2px solid #3a424d;
+    background:#1b2027; background:color-mix(in srgb, var(--sbg,#1b2027) var(--ta, var(--ga)), transparent); }
+  .knob { position:absolute; width:46%; height:46%; left:27%; top:27%; border-radius:50%; background:#4a5463; pointer-events:none;
+    opacity:clamp(.5, calc(var(--tn, var(--gn)) + .25), 1); }
+  /* Translucidos (pantalla del PC detras o transparencia elegida): un borde claro y sombra en la letra
+     para que cada boton se siga viendo sobre cualquier juego, claro u oscuro */
+  body.glass .b, .b.ta { box-shadow:inset 0 0 0 max(1px,calc(var(--u)*.13)) rgba(255,255,255,.4); text-shadow:0 0 calc(var(--u)*.4) #000, 0 0 2px #000; }
+  body.glass .b.on, .b.ta.on { box-shadow:none; }
+  body.glass .stick { border-color:rgba(255,255,255,.4); }
   .gbar { position:absolute; border-radius:99px; background:#1b2027; border:1px solid #3a424d; }
   .gbar i { position:absolute; top:-1px; bottom:-1px; width:12%; left:44%; border-radius:99px; background:var(--on); }
   #msg { position:fixed; inset:0; display:grid; place-items:center; align-content:center; background:rgba(0,0,0,.92); text-align:center; z-index:9; padding:12px; overflow-y:auto; }
@@ -62,10 +71,22 @@
   #gopts input[type=range] { width:30vmin; touch-action:auto; }
   #gwarn { flex-basis:100%; color:#ffcf5b; font-size:.9em; }
   #go { margin-top:2.2vmin; font:700 max(16px,4.6vmin) system-ui,sans-serif; padding:1.6vmin 9vmin; border:0; border-radius:14px; background:var(--on); color:#fff; }
-  #hud { position:fixed; top:max(2px,calc(50% - var(--u)*16)); left:50%; transform:translateX(-50%); font-size:max(11px,calc(var(--u)*1.6)); opacity:.75; display:flex; gap:2em; z-index:5; white-space:nowrap; }
-  #hud span { pointer-events:none; }
-  .hbtn { pointer-events:auto !important; padding:0 1em; }
-  #gst { color:#ffcf5b; }
+  /* Barra de arriba: una pastilla centrada que no pisa ningun boton, con iconos del tamano de un dedo */
+  #hud { position:fixed; top:max(0px,calc(50% - var(--u)*16)); left:50%; transform:translateX(-50%); z-index:5; display:flex; align-items:center; gap:calc(var(--u)*.4);
+    height:calc(var(--u)*3.6); padding:0 calc(var(--u)*.9); border-radius:0 0 calc(var(--u)*1.3) calc(var(--u)*1.3); background:rgba(17,20,24,.62);
+    font-size:max(10px,calc(var(--u)*1.35)); white-space:nowrap; }
+  #hud > span:not(.hbtn) { pointer-events:none; opacity:.8; padding:0 .25em; }
+  #hud > span:empty { display:none; }
+  .hbtn { display:grid; place-items:center; align-content:center; min-width:calc(var(--u)*3.7); height:100%; font-size:calc(var(--u)*1.9); line-height:1; border-radius:calc(var(--u)*.8); }
+  .hbtn:active { background:rgba(255,255,255,.18); }
+  .hbtn.hq::after { content:'H.264'; font-size:.4em; opacity:.8; }
+  /* avisos (giroscopio, guardado...): salen unos segundos abajo y se van solos */
+  #gst { position:fixed; bottom:max(4px,calc(50% - var(--u)*15.6)); left:50%; transform:translateX(-50%); z-index:5; pointer-events:none; white-space:nowrap;
+    color:#ffcf5b; font-size:max(11px,calc(var(--u)*1.4)); padding:.3em .9em; border-radius:99px; background:rgba(17,20,24,.85); }
+  #gst:empty { display:none; }
+  .optrow { display:flex; align-items:center; justify-content:center; gap:.6em; margin-top:1.4vmin; font-size:max(12px,3vmin); }
+  .optrow input[type=range] { width:34vmin; touch-action:auto; }
+  .optrow input:disabled { opacity:.35; }
   input[type=text] { user-select:text; -webkit-user-select:text; touch-action:auto; }
   #perfrow { display:flex; align-items:center; justify-content:center; gap:.6em; margin-top:1.4vmin; font-size:max(12px,3vmin); }
   #perfil { font:inherit; padding:.4em .7em; border-radius:10px; border:1px solid #3a424d; background:#1b2027; color:var(--txt); width:min(60vw,320px); }
@@ -90,7 +111,7 @@
   #gorow #go { margin-top:0; }
   #scrgo { font:700 max(12px,3.2vmin) system-ui,sans-serif; padding:1vmin 2.4vmin; border:3px solid transparent; border-radius:14px; background:#2a3038; color:#fff; opacity:.6; }
   #scrgo.sel { background:#5b3fd1; border-color:#fff; opacity:1; }
-  #scrgo[hidden], #scr[hidden], #viewrow[hidden] { display:none; }
+  #scrgo[hidden], .hbtn[hidden], #viewrow[hidden] { display:none; }
   #s2row { justify-content:center; margin-top:1vmin; font-size:max(12px,3vmin); }
   #partrow[hidden] { display:none; }
   #partrow .row { margin-top:1vmin; }
@@ -116,16 +137,8 @@
   body.scr #screen { display:block; }
   body.scr.vid #screen { display:none; }
   body.scr.vid #screenc { display:block; }
-  body.scr .b:not(.on) { background:rgba(42,48,56,.42); background:color-mix(in srgb, var(--btn) 42%, transparent); }
-  body.scr .stick { background:rgba(27,32,39,.3); border-color:rgba(255,255,255,.25); }
-  body.scr .knob { background:rgba(74,84,99,.6); }
-  /* transparencia elegida en el editor (--ta = % de opacidad del fondo); gana a la automatica de la pantalla */
-  body .b.ta:not(.on) { background:rgba(42,48,56,var(--tn,1)); background:color-mix(in srgb, var(--btn) var(--ta), transparent); }
-  body .stick.ta { background:color-mix(in srgb, var(--sbg,#1b2027) var(--ta), transparent); }
-  body .stick.ta .knob { opacity:var(--tn,1); }
   #eadd input[type=range] { touch-action:auto; flex:1 1 140px; min-width:120px; height:32px; }
   #eadd .trow { flex-basis:100%; display:flex; align-items:center; gap:8px; font-size:clamp(11px,calc(var(--u)*1.5),16px); }
-  body.scr #hud { text-shadow:0 0 3px #000; }
   #rot { display:none; }
   @media (orientation:portrait) { #rot { display:grid; position:fixed; inset:0; place-items:center; background:var(--bg); z-index:10; font-size:6vmin; text-align:center; } }
 </style>
@@ -134,7 +147,8 @@
 <div id="probe"></div>
 <img id="screen" alt="" draggable="false"><canvas id="screenc"></canvas>
 <div id="pad"></div>
-<div id="hud"><span id="tag"></span><span id="ping"></span><span id="gst"></span><span id="part"></span><span id="scr" class="hbtn" hidden>📺</span><span id="fs" class="hbtn">⛶</span><span id="edit" class="hbtn">✎</span><span id="gear" class="hbtn">⚙</span></div>
+<div id="hud"><span id="tag"></span><span id="ping"></span><span id="part"></span><span id="scr" class="hbtn" hidden>📺</span><span id="fs" class="hbtn">⛶</span><span id="edit" class="hbtn">✎</span><span id="gear" class="hbtn">⚙</span></div>
+<div id="gst"></div>
 <div id="ebar" hidden>
   <button id="eplus">＋</button><button id="eminus">－</button><button id="edel" class="del">Quitar</button>
   <button id="ecolor">🎨 Color</button><button id="eaddb">Añadir</button><button id="ereset">Original</button>
@@ -216,6 +230,10 @@
       </div>
       <label id="s2row"><input type="checkbox" id="s2"> Con 2 jugadores la pantalla va lado a lado (no arriba y abajo)</label>
     </div>
+    <div class="lbl">Botones</div>
+    <label class="optrow">Transparencia <input type="range" id="alpha" min="0" max="90" step="5"> <span id="alphav"></span></label>
+    <label class="optrow"><input type="checkbox" id="alphaauto"> Automática: sólidos, y translúcidos cuando se ve la pantalla del PC</label>
+    <label class="optrow"><input type="checkbox" id="haptic"> Vibrar al pulsar un botón</label>
     <div id="gorow">
       <button id="go">Jugar</button>
       <button id="scrgo" hidden>📺 Pantalla</button>
@@ -240,9 +258,12 @@ class BtSocket {   // se comporta como un WebSocket, pero habla por el canal Blu
     this.readyState = 0; this.bufferedAmount = 0; this.hs = []; btErr = '';
     const P = this.P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.BtPad;
     if (!P) { btErr = 'El Bluetooth solo está en la app del móvil.'; setTimeout(() => this._end(), 0); return; }
-    P.addListener('line', e => { if (this.onmessage) this.onmessage({ data: e.data }); }).then(h => this.hs.push(h));
-    P.addListener('closed', () => this._end()).then(h => this.hs.push(h));
-    P.addListener('status', e => { if (this.readyState === 0) { msg.classList.remove('hide'); msgtxt.textContent = e.text; } }).then(h => this.hs.push(h));
+    // En la app addListener devuelve el manejador directamente (no una promesa): llamar a .then sobre el lanzaba un
+    // error y el canal Bluetooth no llegaba a abrirse nunca. Promise.resolve vale para los dos casos
+    const on = (ev, fn) => Promise.resolve(P.addListener(ev, fn)).then(h => { if (this.readyState === 3) { try { h.remove(); } catch (e) {} } else this.hs.push(h); });
+    on('line', e => { if (this.readyState !== 3 && this.onmessage) this.onmessage({ data: e.data }); });
+    on('closed', () => this._end());
+    on('status', e => { if (this.readyState === 0) { msg.classList.remove('hide'); msgtxt.textContent = e.text; } });
     // la app manda el saludo con el PIN y espera la confirmacion del PC antes de dar el canal por abierto
     P.open({ address: addr, uuid: BT_UUID, hello: JSON.stringify({ k: pin, type, c: cid }) })
       .then(() => { this.readyState = 1; if (this.onopen) this.onopen(); })
@@ -343,10 +364,31 @@ function syncMenu() {
   $('sens').value = cfg.sens; $('inv').checked = cfg.inv; $('invY').checked = cfg.invY; $('hold').checked = cfg.hold;
   $('gwarn').textContent = cfg.gyro !== 'off' && !window.isSecureContext
     ? 'Este navegador solo da el giroscopio en https o localhost: arranca el servidor con HTTPS o conecta por cable (adb).' : '';
+  const auto = cfg.alpha == null;
+  $('alphaauto').checked = auto; $('alpha').disabled = auto; $('alpha').value = auto ? 60 : 100 - cfg.alpha;
+  $('alphav').textContent = auto ? '' : (100 - cfg.alpha) + '%';
+  $('haptic').checked = cfg.haptic !== false;
 }
+// Transparencia de todos los botones. cfg.alpha = % de opacidad del fondo; sin elegir (automatica): solidos, y
+// translucidos solo mientras se ve la pantalla del PC detras. Lo que se ajuste en un boton con el editor (✎) gana
+function applyAlpha() {
+  const a = cfg.alpha == null ? (document.body.classList.contains('scr') ? 38 : 100) : clamp(+cfg.alpha || 0, 10, 100);
+  const r = document.documentElement.style;
+  r.setProperty('--ga', a + '%'); r.setProperty('--gn', a / 100);
+  document.body.classList.toggle('glass', a < 100);
+}
+$('alpha').addEventListener('input', e => { cfg.alpha = 100 - e.target.value; $('alphav').textContent = e.target.value + '%'; applyAlpha(); });
+$('alphaauto').addEventListener('change', e => { cfg.alpha = e.target.checked ? null : 40; syncMenu(); applyAlpha(); });
+// Avisos cortos (giroscopio, guardado): se ven unos segundos y se quitan solos
+function note(t) {
+  $('gst').textContent = t; clearTimeout(note.timer);
+  if (t) note.timer = setTimeout(() => { $('gst').textContent = ''; }, 6000);
+}
+function buzz() { if (cfg.haptic !== false && navigator.vibrate) { try { navigator.vibrate(8); } catch (e) {} } }
 function setStep(s) { $('home').hidden = s !== 'home'; $('sett').hidden = s !== 'sett'; }
 $('toset').addEventListener('click', () => setStep('sett'));
-if (SRV) { $('swpc').hidden = false; $('swpc').addEventListener('click', () => { location.href = 'index.html'; }); }   // vuelve a la pantalla de la app
+if (SRV || BT) { $('swpc').hidden = false; $('swpc').addEventListener('click', () => { if (ws) { ws.onclose = null; ws.close(); } location.href = 'index.html'; }); }   // vuelve a la pantalla de la app
+if (window.Capacitor) $('fs').hidden = true;   // la app ya va siempre a pantalla completa
 $('back').addEventListener('click', () => setStep('home'));
 function showMenu(text) {
   setStep('home');
@@ -361,7 +403,7 @@ menu.addEventListener('click', e => {
 $('sens').addEventListener('input', e => { cfg.sens = +e.target.value; });
 $('perfil').addEventListener('input', e => { cfg.profile = e.target.value; });
 for (const b of menu.querySelectorAll('[data-fd]')) b.addEventListener('click', () => { cfg.fightDpad = b.dataset.fd === '1'; syncMenu(); });
-for (const id of ['inv', 'invY', 'hold', 'accelA', 's2']) $(id).addEventListener('change', e => { cfg[id] = e.target.checked; });
+for (const id of ['inv', 'invY', 'hold', 'accelA', 's2', 'haptic']) $(id).addEventListener('change', e => { cfg[id] = e.target.checked; });
 $('gear').addEventListener('click', () => showMenu());
 
 // ---- pantalla completa (solo se puede pedir dentro de un toque; en iPhone Safari no existe) ----
@@ -380,9 +422,11 @@ $('fs').addEventListener('click', () => {
 $('go').addEventListener('click', async () => {
   goFullscreen();
   // iOS exige pedir el permiso dentro del gesto del usuario, antes de cualquier otro await
-  if (cfg.gyro !== 'off' && !(await motionPermission())) { cfg.gyro = 'off'; $('gst').textContent = 'giroscopio denegado'; }
+  let denied = false;
+  if (cfg.gyro !== 'off' && !(await motionPermission())) { cfg.gyro = 'off'; denied = true; }
   store('cfg', JSON.stringify(cfg)); store('type', cfg.type);
-  syncMotion();
+  syncMotion(); applyAlpha();
+  if (denied) note('giroscopio denegado');
   await loadLayouts();
   if (ws && ws.readyState === 1 && cfg.type === type) {   // mismo mando: solo se redibuja, sin reconectar
     // menu.hidden tambien: syncScreen no pide la imagen mientras cree que el menu sigue abierto
@@ -443,9 +487,10 @@ function syncScreen() {
   $('scr').style.opacity = on ? 1 : .45;
   const want = screenOn() && !!type && menu.hidden && !document.hidden;
   document.body.classList.toggle('scr', want);
+  applyAlpha();   // con la pantalla detras los botones pasan a translucidos (si la transparencia esta en automatica)
   const vid = useVid();
   document.body.classList.toggle('vid', want && vid);
-  $('scr').textContent = want && vid ? '📺 H.264' : '📺';   // asi se ve si va por H.264 o por JPEG
+  $('scr').classList.toggle('hq', want && vid);   // asi se ve si va por H.264 o por JPEG
   const params = `view=${cfg.view}&part=${cfg.part}&s2=${cfg.s2 ? 'v' : 'h'}&c=${cid}&v=${vid ? 'h264' : 'jpg'}`;
   if (!want) $('part').textContent = '';
   if (want && sws && swsParams !== params) closeScreen();   // cambio de "toda" a "mi parte": se pide de nuevo
@@ -479,7 +524,7 @@ const PART_NAMES = { '0,0,1,0.5':'arriba', '0,0.5,1,1':'abajo', '0,0,0.5,1':'izq
   '0,0,0.5,0.5':'arriba izq.', '0.5,0,1,0.5':'arriba der.', '0,0.5,0.5,1':'abajo izq.', '0.5,0.5,1,1':'abajo der.' };
 function showPart(r) {
   const name = PART_NAMES[r.join(',')];
-  $('part').textContent = cfg.view !== 'mine' ? '' : name ? '📺 ' + name : '📺 entera (eres el único jugador)';
+  $('part').textContent = cfg.view !== 'mine' ? '' : name ? '📺 ' + name : '📺 entera';
 }
 // Si la imagen se congela (cambio de red, movil bloqueado...) se vuelve a pedir sola
 setInterval(() => { if (sws && Date.now() - lastFrame > 3000) { closeScreen(); syncScreen(); } }, 1000);
@@ -503,7 +548,7 @@ loadInfo(); setInterval(loadInfo, 5000);
 let type = null, player = 0;
 const NAMES = { xbox:'Xbox', ps4:'PlayStation', ps4native:'PlayStation DS4', switch:'Switch' };
 const MODE_NAMES = { general:'General', carreras:'Carreras', peleas:'Peleas', disparos:'Disparos', deportes:'Deportes' };
-function tagText() { $('tag').textContent = player ? `Jugador ${player} · ${NAMES[type]} · ${MODE_NAMES[cfg.mode]}` : ''; }
+function tagText() { $('tag').textContent = player ? `J${player} · ${MODE_NAMES[cfg.mode]}` : ''; }   // corto: la barra no debe pisar botones
 
 function connect() {
   opened = false; full = false; player = 0;
@@ -528,6 +573,8 @@ function connect() {
       }
       retryUntil = 0;
     }
+    // Por Bluetooth, si el PC rechaza el PIN guardado se vuelve a la app para escribir el nuevo
+    if (BT && !opened && /PIN/.test(btErr)) { location.href = 'index.html?btpin=' + encodeURIComponent(BT); return; }
     showMenu(full ? 'Ya hay 6 mandos conectados. Inténtalo de nuevo cuando se libere uno.'
       : opened ? 'Conexión perdida. ¿Cómo quieres reconectar?'
       : (BT && btErr ? btErr + ' ' : 'No se pudo conectar. ') + '¿Reintentar como…?');
@@ -553,7 +600,7 @@ async function motionPermission() {
 }
 function syncMotion() {
   const want = cfg.gyro !== 'off';
-  $('gst').textContent = '';
+  note('');
   if (want === motionOn) { if (want) armMotionWarning(); return; }
   motionOn = want;
   if (want) { addEventListener('devicemotion', onMotion); armMotionWarning(); }
@@ -561,7 +608,7 @@ function syncMotion() {
 }
 function armMotionWarning() {
   gotMotion = false;
-  setTimeout(() => { if (motionOn && !gotMotion) $('gst').textContent = '⚠ sin datos del giroscopio (¿https?)'; }, 2500);
+  setTimeout(() => { if (motionOn && !gotMotion) note('⚠ sin datos del giroscopio (¿https?)'); }, 2500);
 }
 function zeroGyro() { if (g.lx || g.rx || g.ry) { g.lx = g.rx = g.ry = 0; sendSticks(); } if (gbar) gbar.firstChild.style.left = '44%'; }
 
@@ -614,6 +661,7 @@ function layoutKey() {
 }
 async function loadLayouts() {
   try { layouts = JSON.parse(load('layouts:' + pid())) || {}; } catch (e) { layouts = {}; }
+  if (BT) return;   // por Bluetooth solo viajan los botones: los diseños se guardan en el movil
   try {
     const r = await fetch(`${API}/layouts?k=${encodeURIComponent(key)}&p=${encodeURIComponent(pid())}`);
     if (r.ok) { const d = await r.json(); if (d && typeof d === 'object' && Object.keys(d).length) layouts = d; }
@@ -621,6 +669,7 @@ async function loadLayouts() {
 }
 async function saveLayouts() {
   store('layouts:' + pid(), JSON.stringify(layouts));
+  if (BT) return true;
   try {
     const r = await fetch(`${API}/layouts?k=${encodeURIComponent(key)}&p=${encodeURIComponent(pid())}`,
       { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(layouts) });
@@ -895,7 +944,7 @@ $('esave').addEventListener('click', async () => {
   if (Object.keys(draft).length) layouts[k] = draft; else delete layouts[k];
   const ok = await saveLayouts();
   stopEdit();
-  $('gst').textContent = ok ? '' : '⚠ guardado solo en este móvil';
+  note(ok ? '' : '⚠ guardado solo en este móvil');
 });
 
 // ---- construccion del mando ----
@@ -922,62 +971,162 @@ function decorate(el, text, o) {
   if (o.tint) el.style.setProperty('--btn', o.tint);
   if (o.f) el.style.setProperty('--f', o.f);
 }
+// Los toques los reparte un unico gestor (mas abajo): cada control solo dice que hacer al pulsarlo (_down) y al
+// soltarlo (_up). o.g = grupo: entre botones del mismo grupo el dedo puede deslizarse sin levantarlo
+let holds = {};   // boton logico -> dedos que lo pulsan (el mismo boton puede estar dibujado dos veces)
+function hold(name, id, on) {
+  const s = holds[name] || (holds[name] = new Set());
+  if (on) s.add(id); else s.delete(id);
+  const v = s.size > 0;
+  if (!!state.btn[name] === v) return;
+  state.btn[name] = v; send({ t:'btn', b:name, d:v ? 1 : 0 });
+  if (v) buzz();
+}
 function button(name, label, a, x, y, w, h, o = {}) {
   const el = document.createElement('div');
   el.className = 'b' + (o.sq ? ' sq' : '');
   decorate(el, label, o);
   place(el, a, x, y, w, h);
-  const active = new Set();
-  const set = on => {
-    if (!!state.btn[name] === on) return;
-    state.btn[name] = on; el.classList.toggle('on', on);
-    send({ t:'btn', b:name, d:on ? 1 : 0 });
-  };
-  // pointerdown se dispara al primer contacto: sin esperar al "click"
-  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); active.add(e.pointerId); set(true); });
-  const up = e => { active.delete(e.pointerId); if (!active.size) set(false); };
-  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  const own = new Set();
+  el._name = name; el._grp = o.g || '';
+  el._down = id => { own.add(id); el.classList.add('on'); hold(name, id, true); };
+  el._up = id => { own.delete(id); if (!own.size) el.classList.remove('on'); hold(name, id, false); };
   pad.appendChild(el);
   return reg(el, name);
 }
 
-// cuatro botones en rombo alrededor de (cx, cy); ancla 'r' refleja el eje x
-function diamond(a, cx, cy, s, size, items) {
+// cuatro botones en rombo alrededor de (cx, cy); ancla 'r' refleja el eje x. Forman un grupo: el pulgar pasa de uno a otro
+let groups = 0;
+function diamond(a, cx, cy, s, size, items, g) {
+  g = g || 'g' + ++groups;
   for (const [name, label, dx, dy, o] of items) {
     const x = a === 'r' ? cx - dx - size / 2 : cx + dx - size / 2;
-    button(name, label, a, x, cy + dy - size / 2, size, size, o);
+    button(name, label, a, x, cy + dy - size / 2, size, size, { ...o, g });
   }
 }
 
+// Palanca. Comodidad: (1) el punto donde cae el pulgar, si esta cerca del centro, pasa a ser el centro, asi apoyar el
+// dedo algo descentrado no mueve nada; (2) llega al tope a 3/4 del radio, sin estirar el pulgar; (3) una zona muerta
+// pequena evita el temblor; (4) se puede empezar un poco fuera del circulo (lo decide el gestor de toques)
 function stick(a, cx, cy, size, onMove, ctlId = 'LS') {
   const base = document.createElement('div'); base.className = 'stick';
   const knob = document.createElement('div'); knob.className = 'knob';
   base.appendChild(knob); place(base, a, cx - size / 2, cy - size / 2, size); pad.appendChild(base);
-  let id = null;
-  const apply = e => {
-    const r = base.getBoundingClientRect(), R = r.width / 2;
-    let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R);
-    const d = Math.hypot(dx, dy); if (d > R) { dx *= R / d; dy *= R / d; }
-    knob.style.transform = `translate(${dx}px,${dy}px)`;
-    onMove(dx / R, dy / R);
-    sendSticks();  // inmediato, sin esperar al frame
+  let c = [0, 0], o = [0, 0], R = 1;
+  base._stick = {
+    start(e) {
+      const r = base.getBoundingClientRect(); R = r.width / 2 || 1; c = [r.left + R, r.top + R];
+      let dx = e.clientX - c[0], dy = e.clientY - c[1];
+      const d = Math.hypot(dx, dy), lim = R * .3;
+      if (d > lim) { dx *= lim / d; dy *= lim / d; }
+      o = [c[0] + dx, c[1] + dy];
+      base.classList.add('held'); this.move(e);
+    },
+    move(e) {
+      let dx = e.clientX - o[0], dy = e.clientY - o[1];
+      const T = R * .75, d = Math.hypot(dx, dy);
+      if (d > T) { dx *= T / d; dy *= T / d; }
+      knob.style.transform = `translate(${o[0] - c[0] + dx}px,${o[1] - c[1] + dy}px)`;
+      const m = Math.min(1, d / T), k = m <= .08 ? 0 : (m - .08) / .92 / m;
+      onMove(dx / T * k, dy / T * k);
+      sendSticks();  // inmediato, sin esperar al frame
+    },
+    end() { base.classList.remove('held'); knob.style.transform = ''; onMove(0, 0); sendSticks(); }
   };
-  base.addEventListener('pointerdown', e => { id = e.pointerId; base.setPointerCapture(id); apply(e); });
-  base.addEventListener('pointermove', e => { if (e.pointerId === id) apply(e); });
-  const end = e => { if (e.pointerId !== id) return; id = null; knob.style.transform = ''; onMove(0, 0); sendSticks(); };
-  base.addEventListener('pointerup', end); base.addEventListener('pointercancel', end);
   return reg(base, ctlId);
 }
 
 function trigger(side, label, a, x, y, w, h, o = {}) {
   const el = document.createElement('div'); el.className = 'b sq'; decorate(el, label, o); place(el, a, x, y, w, h);
-  const set = v => { state[side] = v; el.classList.toggle('on', !!v); send({ t:'trig', l:state.l, r:state.r }); };
-  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); set(1); });
-  const up = () => set(0);
-  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  const own = new Set();
+  const set = v => { if (state[side] === v) return; state[side] = v; send({ t:'trig', l:state.l, r:state.r }); if (v) buzz(); };
+  el._grp = o.g || '';
+  el._down = id => { own.add(id); el.classList.add('on'); set(1); };
+  el._up = id => { own.delete(id); if (!own.size) { el.classList.remove('on'); set(0); } };
   pad.appendChild(el);
   return reg(el, side === 'l' ? 'LT' : 'RT');
 }
+
+// ---- gestor de toques ----
+// Un dedo que cae junto a un boton (hasta HIT u de su borde) lo pulsa igual: no hay que acertar justo dentro.
+// Dentro de un grupo (los 4 botones de accion, la cruceta, los 8 de Peleas) el dedo se desliza de uno a otro, y
+// justo entre dos vecinos pulsa los dos a la vez. La cruceta ademas da diagonales, como una cruceta de verdad.
+const fingers = new Map();   // dedo -> { stick } o { grp, els:[botones que pulsa ahora] }
+const HIT = 1.6;
+function gapTo(el, x, y) {   // distancia en px del dedo al borde del control (negativa si esta dentro)
+  const r = el.getBoundingClientRect();
+  if (!r.width) return Infinity;
+  if (!el.classList.contains('sq')) return Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2)) - Math.min(r.width, r.height) / 2;
+  const dx = Math.max(r.left - x, x - r.right), dy = Math.max(r.top - y, y - r.bottom);
+  return dx > 0 && dy > 0 ? Math.hypot(dx, dy) : Math.max(dx, dy);
+}
+function nearCtl(x, y) {
+  const u = unit(); let best = null, bd = Infinity;
+  for (const id in ctl) {
+    const el = ctl[id]; if (!el._down && !el._stick) continue;
+    const d = gapTo(el, x, y) / u - (el._stick ? 1 : 0);   // a las palancas se les da algo mas de margen
+    if (d < bd) { bd = d; best = el; }
+  }
+  return bd <= HIT ? best : null;
+}
+function pick(grp, x, y, cur) {
+  const u = unit(), m = [];
+  for (const id in ctl) {
+    const el = ctl[id]; if (el._grp !== grp || !el._down) continue;
+    const held = cur.includes(el), d = gapTo(el, x, y) / u;
+    if (d <= HIT + (held ? 1.5 : .4)) m.push([d - (held ? .5 : 0), el, held || d <= HIT]);   // el que ya se pulsa aguanta un poco mas
+  }
+  m.sort((p, q) => p[0] - q[0]);
+  if (!m.length || !m[0][2]) return [];
+  return m[1] && m[1][0] - m[0][0] <= .7 ? [m[0][1], m[1][1]] : [m[0][1]];   // casi a la misma distancia de dos: los dos
+}
+// Cruceta: la direccion sale del angulo respecto al centro de las cuatro flechas (diagonales entre dos flechas).
+// Devuelve null si las flechas ya no forman una cruz (se movieron con el editor): entonces valen como botones sueltos
+function dpadPick(x, y) {
+  const m = {};
+  for (const id in ctl) { const el = ctl[id]; if (el._grp === 'dpad' && el._down && el.style.display !== 'none' && !m[el._name]) m[el._name] = el; }
+  if (!m.UP || !m.DOWN || !m.LEFT || !m.RIGHT) return null;
+  const p = {}; let cx = 0, cy = 0;
+  for (const n in m) { const r = m[n].getBoundingClientRect(); p[n] = [r.left + r.width / 2, r.top + r.height / 2]; cx += p[n][0] / 4; cy += p[n][1] / 4; }
+  const ok = (n, sx, sy) => { const dx = p[n][0] - cx, dy = p[n][1] - cy; return sx ? dx * sx > Math.abs(dy) : dy * sy > Math.abs(dx); };
+  if (!ok('UP', 0, -1) || !ok('DOWN', 0, 1) || !ok('LEFT', -1, 0) || !ok('RIGHT', 1, 0)) return null;
+  const span = (Math.hypot(p.UP[0] - cx, p.UP[1] - cy) + Math.hypot(p.DOWN[0] - cx, p.DOWN[1] - cy) + Math.hypot(p.LEFT[0] - cx, p.LEFT[1] - cy) + Math.hypot(p.RIGHT[0] - cx, p.RIGHT[1] - cy)) / 4;
+  const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy);
+  if (d < span * .3 || d > span * 2.8) return [];
+  const ang = Math.atan2(-dy, dx) * 180 / Math.PI, near = t => Math.abs(((ang - t + 540) % 360) - 180) <= 60;
+  return [near(0) && m.RIGHT, near(90) && m.UP, near(180) && m.LEFT, near(-90) && m.DOWN].filter(Boolean);
+}
+function setHeld(id, f, next) {
+  for (const el of f.els) if (!next.includes(el)) el._up(id);
+  for (const el of next) if (!f.els.includes(el)) el._down(id);
+  f.els = next;
+}
+function targets(f, e) {
+  return (f.grp === 'dpad' && dpadPick(e.clientX, e.clientY)) || pick(f.grp, e.clientX, e.clientY, f.els);
+}
+document.addEventListener('pointerdown', e => {
+  if (editing || !type || !msg.classList.contains('hide') || !e.target.closest) return;
+  if (e.target.closest('#hud,#ebar,#eadd,#rot')) return;
+  let el = e.target.closest('.b,.stick');
+  if (el && !el._down && !el._stick) return;   // interruptores (GYRO, MOVER): tienen su propio toque
+  if (!el) el = nearCtl(e.clientX, e.clientY);
+  if (!el) return;
+  if (el._stick) { fingers.set(e.pointerId, { stick:el._stick }); el._stick.start(e); return; }
+  const f = { grp:el._grp, els:[] };
+  fingers.set(e.pointerId, f);
+  const t = f.grp ? targets(f, e) : [];
+  setHeld(e.pointerId, f, t.length ? t : [el]);
+});
+document.addEventListener('pointermove', e => {
+  const f = fingers.get(e.pointerId); if (!f) return;
+  if (f.stick) f.stick.move(e);
+  else if (f.grp) setHeld(e.pointerId, f, targets(f, e));   // sin grupo (gatillos, hombros): pulsado hasta levantar el dedo
+});
+for (const t of ['pointerup', 'pointercancel']) document.addEventListener(t, e => {
+  const f = fingers.get(e.pointerId); if (!f) return;
+  fingers.delete(e.pointerId);
+  if (f.stick) f.stick.end(); else setHeld(e.pointerId, f, []);
+});
 
 // La palanca de Peleas tambien pulsa la cruceta (8 direcciones, con margen para no fallar al diagonal)
 function stickToDpad(x, y) {
@@ -1013,8 +1162,9 @@ function build() {
   const B = BRANDS[cfg.type], f = B.face, mode = cfg.mode, sq = { sq:true };
   pad.innerHTML = ''; state = { btn:{}, lx:0, ly:0, rx:0, ry:0, l:0, r:0 }; g.lx = g.rx = g.ry = 0; gbar = null;
   for (const k in ctl) delete ctl[k];
+  fingers.clear(); holds = {}; groups = 0;
   const dirs = (a, cx, cy, s, size) => diamond(a, cx, cy, s, size, [
-    ['UP','▲',0,-s,sq], ['DOWN','▼',0,s,sq], ['LEFT','◀',-s,0,sq], ['RIGHT','▶',s,0,sq]]);
+    ['UP','▲',0,-s,sq], ['DOWN','▼',0,s,sq], ['LEFT','◀',-s,0,sq], ['RIGHT','▶',s,0,sq]], 'dpad');
   const faces = (a, cx, cy, s, size, cap = {}, fs) => diamond(a, cx, cy, s, size, [
     ['Y',f.Y[0],0,-s,{color:f.Y[1],sub:cap.Y,f:fs}], ['A',f.A[0],0,s,{color:f.A[1],sub:cap.A,f:fs}],
     ['X',f.X[0],-s,0,{color:f.X[1],sub:cap.X,f:fs}], ['B',f.B[0],s,0,{color:f.B[1],sub:cap.B,f:fs}]]);
@@ -1032,24 +1182,24 @@ function build() {
     button(name, f[name][0], side, x, y, w, h, { ...o, sq:true });
   };
 
-  // franja central, igual en todos los modos: opciones arriba, L3/R3 (y touchpad) debajo
+  // franja central, igual en todos los modos: opciones arriba (justo bajo la barra, sin pisarla), L3/R3 (y touchpad) debajo
   const center = withSticks => {
     if (B.home) {
-      button('BACK', B.back, 'c', -12.5, 2.5, 8.5, 4.5, small);
-      button('HOME', B.home, 'c', -3, 2.5, 6, 4.5, { f:1.8 });
-      button('START', B.start, 'c', 4, 2.5, 8.5, 4.5, small);
+      button('BACK', B.back, 'c', -12.5, 4.3, 8.5, 4.4, small);
+      button('HOME', B.home, 'c', -3, 4.3, 6, 4.4, { f:1.8 });
+      button('START', B.start, 'c', 4, 4.3, 8.5, 4.4, small);
     } else {
-      button('BACK', B.back, 'c', -8.5, 2.5, 7, 4.5, { sq:true, f:2 });
-      button('START', B.start, 'c', 1.5, 2.5, 7, 4.5, { sq:true, f:2 });
+      button('BACK', B.back, 'c', -8.5, 4.3, 7, 4.4, { sq:true, f:2 });
+      button('START', B.start, 'c', 1.5, 4.3, 7, 4.4, { sq:true, f:2 });
     }
     if (!withSticks) return;
     if (B.touchpad) {
-      button('L3', 'L3', 'c', -10, 8.3, 6.2, 4.5, small);
-      button('TOUCHPAD', 'PAD', 'c', -3.3, 8.3, 6.6, 4.5, small);
-      button('R3', 'R3', 'c', 3.8, 8.3, 6.2, 4.5, small);
+      button('L3', 'L3', 'c', -10, 9.5, 6.2, 4.3, small);
+      button('TOUCHPAD', 'PAD', 'c', -3.3, 9.5, 6.6, 4.3, small);
+      button('R3', 'R3', 'c', 3.8, 9.5, 6.2, 4.3, small);
     } else {
-      button('L3', 'L3', 'c', -7.5, 8.3, 6, 4.5, small);
-      button('R3', 'R3', 'c', 1.5, 8.3, 6, 4.5, small);
+      button('L3', 'L3', 'c', -7.5, 9.5, 6, 4.3, small);
+      button('R3', 'R3', 'c', 1.5, 9.5, 6, 4.3, small);
     }
   };
 
@@ -1063,12 +1213,14 @@ function build() {
       stick('l', 15, 20.5, 18, (x, y) => { state.lx = x; state.ly = -y; stickToDpad(x, -y); });
     }
     const cols = [1.5, 9.4, 17.3, 25.2];   // hueco hasta el borde derecho, de fuera hacia dentro
+    // los ocho son un grupo: el pulgar se desliza de uno a otro y, entre dos vecinos, pulsa los dos (agarres, combos)
     const row = (y, items) => items.forEach(([name, label, kind, o], i) => {
+      o = { ...o, g:'atk' };
       if (kind === 'trig') trigger(name === 'LT' ? 'l' : 'r', label, 'r', cols[i], y, 7, 7, o);
       else button(name, label, 'r', cols[i], y, 7, 7, kind === 'sq' ? { ...o, sq:true } : o);
     });
-    row(13.8, [['RB', B.rb, 'sq', {}], ['LB', B.lb, 'sq', {}], ['Y', f.Y[0], 'face', { color:f.Y[1] }], ['X', f.X[0], 'face', { color:f.X[1] }]]);
-    row(21.8, [['RT', B.rt, 'trig', {}], ['LT', B.lt, 'trig', {}], ['B', f.B[0], 'face', { color:f.B[1] }], ['A', f.A[0], 'face', { color:f.A[1] }]]);
+    row(15, [['RB', B.rb, 'sq', {}], ['LB', B.lb, 'sq', {}], ['Y', f.Y[0], 'face', { color:f.Y[1] }], ['X', f.X[0], 'face', { color:f.X[1] }]]);
+    row(23, [['RT', B.rt, 'trig', {}], ['LT', B.lt, 'trig', {}], ['B', f.B[0], 'face', { color:f.B[1] }], ['A', f.A[0], 'face', { color:f.A[1] }]]);
     center(true);   // L3 / R3: algunos juegos de pelea (Mortal Kombat) los usan
     // Interruptor para cambiar en pleno juego entre cruceta + palanca y solo palanca
     const mv = document.createElement('div'); mv.className = 'b sq';
@@ -1151,27 +1303,32 @@ function build() {
     center(true);
   }
 
-  // Interruptor del giroscopio, dentro del mando y en todos los modos (en Peleas va a la derecha del stick)
-  const gx = mode === 'peleas' ? 1 : -3, on = cfg.gyro !== 'off';
-  const sw = document.createElement('div'); sw.className = 'b sq';
-  decorate(sw, 'GYRO', { sub:on ? 'ON' : 'OFF', f:1.5, tint:on ? GREEN : null });
-  place(sw, 'c', gx, 26.6, 6, 3.6); pad.appendChild(sw); reg(sw, 'GYRO');
-  sw.addEventListener('pointerdown', toggleGyro);
+  // Interruptor del giroscopio dentro del mando: solo donde el giroscopio sirve (Carreras = volante, Disparos = apuntar)
+  // o si se dejo encendido; en los demas modos era un boton de mas en medio de la pantalla
+  const on = cfg.gyro !== 'off';
+  if (mode === 'carreras' || mode === 'disparos' || on) {
+    const sw = document.createElement('div'); sw.className = 'b sq';
+    decorate(sw, 'GYRO', { sub:on ? 'ON' : 'OFF', f:1.5, tint:on ? GREEN : null });
+    place(sw, 'c', -3, 26.6, 6, 3.6); pad.appendChild(sw); reg(sw, 'GYRO');
+    sw.addEventListener('pointerdown', toggleGyro);
+  }
   if (cfg.gyro === 'wheel') {   // indicador del volante
     gbar = document.createElement('div'); gbar.className = 'gbar'; gbar.appendChild(document.createElement('i'));
-    place(gbar, 'c', gx, 30.8, 6, 1.1); pad.appendChild(gbar); reg(gbar, 'GBAR');
+    place(gbar, 'c', -3, 30.8, 6, 1.1); pad.appendChild(gbar); reg(gbar, 'GBAR');
   }
   applyLayout();
 }
 
 async function toggleGyro() {
+  let denied = false;
   if (cfg.gyro !== 'off') { cfg.gmode = cfg.gyro; cfg.gyro = 'off'; }
   else {
     cfg.gyro = cfg.gmode || (cfg.mode === 'carreras' ? 'wheel' : 'aim');
-    if (!(await motionPermission())) { cfg.gyro = 'off'; $('gst').textContent = 'giroscopio denegado'; }
+    if (!(await motionPermission())) { cfg.gyro = 'off'; denied = true; }
   }
   store('cfg', JSON.stringify(cfg));
   syncMotion(); releaseAll(); build();   // en Carreras + volante cambia la disposicion de los pedales
+  if (denied) note('giroscopio denegado');
 }
 
 function start() {

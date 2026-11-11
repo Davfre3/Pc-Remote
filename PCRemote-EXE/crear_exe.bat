@@ -2,6 +2,10 @@
 chcp 65001 >nul
 rem Crea el programa del PC: dist\PC Remote\PC Remote.exe  (y el instalador si Inno Setup esta instalado)
 cd /d "%~dp0"
+rem El programa abierto (y su adb) bloquean dist\PC Remote: sin cerrarlos la compilacion falla y queda el .exe viejo
+taskkill /f /im "PC Remote.exe" >nul 2>&1
+if exist "dist\PC Remote\_internal\adb\adb.exe" "dist\PC Remote\_internal\adb\adb.exe" kill-server >nul 2>&1
+if exist "app\adb\adb.exe" "app\adb\adb.exe" kill-server >nul 2>&1
 set PY=..\.venv\Scripts\python.exe
 if not exist "%PY%" set PY=python
 "%PY%" -m PyInstaller --noconfirm --clean PCRemote.spec || goto :err

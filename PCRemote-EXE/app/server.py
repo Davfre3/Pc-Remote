@@ -34,7 +34,7 @@ try:  # video H.264 propio (sin Moonlight); si falta, la pantalla sigue yendo en
 except ImportError:
     av = None
 
-VERSION = "1.1.1"
+VERSION = "1.1.3"
 # Aqui se publica la version mas nueva (version.json); el programa y la app del movil la consultan para actualizarse
 UPDATE_URL = "https://raw.githubusercontent.com/Davfre3/Pc-Remote/main/releases/version.json"
 

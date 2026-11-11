@@ -97,6 +97,14 @@ public class BtPad extends Plugin {
         return o;
     }
 
+    // ---------------- botones de volumen ----------------
+    /** El mando pide usar (o soltar) los botones de volumen como gatillos/hombros; MainActivity los intercepta. */
+    @PluginMethod
+    public void volumeKeys(PluginCall call) {
+        MainActivity.volumeKeys = Boolean.TRUE.equals(call.getBoolean("on", false));
+        call.resolve();
+    }
+
     // ---------------- dispositivos emparejados ----------------
     @PluginMethod
     public void devices(PluginCall call) {

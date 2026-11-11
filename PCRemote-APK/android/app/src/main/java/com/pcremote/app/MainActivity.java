@@ -2,6 +2,7 @@ package com.pcremote.app;
 
 import android.os.Build;
 import android.os.Bundle;
+import android.view.KeyEvent;
 import android.view.WindowManager;
 import android.view.View;
 import androidx.core.graphics.Insets;
@@ -31,6 +32,25 @@ public class MainActivity extends BridgeActivity {
             return insets;
         });
         hideBars();
+    }
+
+    /** Lo activa el mando (BtPad.volumeKeys) solo mientras se juega: en los menus el volumen funciona normal. */
+    static volatile boolean volumeKeys = false;
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent ev) {
+        int k = ev.getKeyCode();
+        if (volumeKeys && (k == KeyEvent.KEYCODE_VOLUME_UP || k == KeyEvent.KEYCODE_VOLUME_DOWN)) {
+            int a = ev.getAction();
+            // la auto-repeticion de mantener pulsado no es una pulsacion nueva
+            if (bridge != null && ev.getRepeatCount() == 0 && (a == KeyEvent.ACTION_DOWN || a == KeyEvent.ACTION_UP)) {
+                String js = "window.onVolKey&&onVolKey('" + (k == KeyEvent.KEYCODE_VOLUME_UP ? "up" : "down") + "',"
+                    + (a == KeyEvent.ACTION_DOWN ? 1 : 0) + ")";
+                bridge.getWebView().post(() -> bridge.getWebView().evaluateJavascript(js, null));
+            }
+            return true;   // el volumen del movil no cambia mientras hacen de botones
+        }
+        return super.dispatchKeyEvent(ev);
     }
 
     @Override

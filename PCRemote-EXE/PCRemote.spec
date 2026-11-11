@@ -4,7 +4,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, co
 
 datas = [("app/static", "static"), ("app/adb", "adb")] + collect_data_files("vgamepad") + collect_data_files("webview")   # vgamepad trae ViGEmClient.dll y el instalador del driver
 binaries = collect_dynamic_libs("vgamepad") + collect_dynamic_libs("av") + collect_dynamic_libs("webview") + collect_dynamic_libs("pythonnet") + collect_dynamic_libs("clr_loader")
-hidden = collect_submodules("pystray") + collect_submodules("webview") + ["clr", "clr_loader", "pythonnet"] + ["cryptography.hazmat.backends.openssl"]
+hidden = collect_submodules("pystray") + collect_submodules("webview") + ["clr", "clr_loader", "pythonnet"] + ["cryptography.hazmat.backends.openssl"] + collect_submodules("dxcam") + collect_submodules("comtypes")   # captura DXGI
 
 a = Analysis(["app/server.py"], pathex=["app"], binaries=binaries, datas=datas, hiddenimports=hidden,
              excludes=["tkinter", "matplotlib", "scipy", "pandas", "IPython", "pytest"], noarchive=False)

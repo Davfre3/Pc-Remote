@@ -21,7 +21,12 @@
     background:var(--btn); background:color-mix(in srgb, var(--btn) var(--ta, var(--ga)), transparent); }
   .b small { display:block; font-size:.4em; font-weight:600; opacity:.8; letter-spacing:.02em; }
   .b.sq { border-radius:calc(var(--u)*1.2); }
-  .b.on { background:var(--on); filter:brightness(1.4); }
+  /* Pulsado: brilla y crece, para notarlo con el rabillo del ojo sin dejar de mirar la tele */
+  .b { transition:transform .06s ease-out; }
+  .b.on { background:var(--on); filter:brightness(1.4); transform:scale(1.12); box-shadow:0 0 calc(var(--u)*1.6) var(--on) !important; }
+  .stick.held { border-color:var(--on); box-shadow:0 0 calc(var(--u)*1.4) color-mix(in srgb, var(--on) 70%, transparent); }
+  .stick.held .knob { background:var(--on); opacity:1; }
+  .stick.edge { box-shadow:0 0 calc(var(--u)*2.2) var(--on); }
   .b.cap small { font-size:.5em; font-weight:500; margin-top:.15em; }
   .stick { position:absolute; border-radius:50%; border:2px solid #3a424d;
     background:#1b2027; background:color-mix(in srgb, var(--sbg,#1b2027) var(--ta, var(--ga)), transparent); }
@@ -30,7 +35,6 @@
   /* Translucidos (pantalla del PC detras o transparencia elegida): un borde claro y sombra en la letra
      para que cada boton se siga viendo sobre cualquier juego, claro u oscuro */
   body.glass .b, .b.ta { box-shadow:inset 0 0 0 max(1px,calc(var(--u)*.13)) rgba(255,255,255,.4); text-shadow:0 0 calc(var(--u)*.4) #000, 0 0 2px #000; }
-  body.glass .b.on, .b.ta.on { box-shadow:none; }
   body.glass .stick { border-color:rgba(255,255,255,.4); }
   .gbar { position:absolute; border-radius:99px; background:#1b2027; border:1px solid #3a424d; }
   .gbar i { position:absolute; top:-1px; bottom:-1px; width:12%; left:44%; border-radius:99px; background:var(--on); }
@@ -100,7 +104,7 @@
     width:max-content; max-width:calc(100vw - var(--sl) - var(--sr) - 16px); background:rgba(17,20,24,.9); border-radius:0 0 12px 12px; }
   #ebar[hidden], #eadd[hidden] { display:none; }
   #ebar button, #eadd button { font:700 clamp(12px,calc(var(--u)*1.7),18px) system-ui,sans-serif; padding:.5em .8em; min-height:34px; border:0; border-radius:9px; background:#2a3038; color:#fff; white-space:nowrap; }
-  #ebar .ok { background:#25573a; } #ebar .del { background:#5a2a2e; }
+  #ebar .ok { background:#25573a; } #ebar .del { background:#5a2a2e; } #ebar #eblock.on { background:#3a4f7a; }
   /* Panel de Añadir / Color: se coloca justo debajo de la barra (su alto cambia segun el movil) y, si no cabe, se desliza */
   #eadd { position:fixed; top:calc(var(--u)*5.5); left:50%; transform:translateX(-50%); z-index:7; display:flex; flex-wrap:wrap; gap:6px; justify-content:center; align-content:flex-start;
     width:min(calc(100vw - var(--sl) - var(--sr) - 16px),640px); padding:10px; overflow-y:auto; overscroll-behavior:contain; background:rgba(17,20,24,.96); border:1px solid #3a424d; border-radius:12px; }
@@ -150,12 +154,12 @@
 <div id="hud"><span id="tag"></span><span id="ping"></span><span id="part"></span><span id="scr" class="hbtn" hidden>📺</span><span id="fs" class="hbtn">⛶</span><span id="edit" class="hbtn">✎</span><span id="gear" class="hbtn">⚙</span></div>
 <div id="gst"></div>
 <div id="ebar" hidden>
-  <button id="eplus">＋</button><button id="eminus">－</button><button id="edel" class="del">Quitar</button>
+  <button id="eblock"></button><button id="eplus">＋</button><button id="eminus">－</button><button id="edel" class="del">Quitar</button>
   <button id="ecolor">🎨 Color</button><button id="eaddb">Añadir</button><button id="ereset">Original</button>
   <button id="ecopy">💾 Copias</button><button id="esave" class="ok">Guardar</button><button id="equit">Salir</button>
 </div>
 <div id="eadd" hidden></div>
-<div id="ehint">Toca un botón para elegirlo · arrastra para moverlo · pellizca con dos dedos o usa ＋ / － para cambiar su tamaño</div>
+<div id="ehint">Toca un botón para elegirlo · arrastra para moverlo · pellizca con dos dedos o usa ＋ / － para cambiar su tamaño · con 🔗 En bloque la cruceta y los botones de acción se mueven juntos</div>
 <div id="msg"><div id="msgtxt">Conectando…</div>
   <div id="menu" hidden>
     <div id="home">
@@ -233,7 +237,9 @@
     <div class="lbl">Botones</div>
     <label class="optrow">Transparencia <input type="range" id="alpha" min="0" max="90" step="5"> <span id="alphav"></span></label>
     <label class="optrow"><input type="checkbox" id="alphaauto"> Automática: sólidos, y translúcidos cuando se ve la pantalla del PC</label>
-    <label class="optrow"><input type="checkbox" id="haptic"> Vibrar al pulsar un botón</label>
+    <label class="optrow"><input type="checkbox" id="haptic"> Vibrar al pulsar un botón (y un toque al llevar la palanca al tope)</label>
+    <label class="optrow"><input type="checkbox" id="float"> Palanca flotante: la palanca izquierda aparece donde apoyes el pulgar</label>
+    <label class="optrow" id="volrow" hidden><input type="checkbox" id="vol"> Usar los botones de volumen del móvil <span id="volhint"></span></label>
     <div id="gorow">
       <button id="go">Jugar</button>
       <button id="scrgo" hidden>📺 Pantalla</button>
@@ -286,6 +292,8 @@ let state = { btn:{}, lx:0, ly:0, rx:0, ry:0, l:0, r:0 };
 const g = { lx:0, rx:0, ry:0 };   // aporte del giroscopio a los sticks (se suma al tactil)
 let gbar = null;
 
+// Solo en la app de Android se pueden leer los botones de volumen
+const VOLKEYS = !!(window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.BtPad && Capacitor.getPlatform && Capacitor.getPlatform() === 'android');
 function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -368,6 +376,10 @@ function syncMenu() {
   $('alphaauto').checked = auto; $('alpha').disabled = auto; $('alpha').value = auto ? 60 : 100 - cfg.alpha;
   $('alphav').textContent = auto ? '' : (100 - cfg.alpha) + '%';
   $('haptic').checked = cfg.haptic !== false;
+  $('float').checked = cfg.float !== false;
+  $('volrow').hidden = !VOLKEYS; $('vol').checked = !!cfg.vol;
+  const vm = volMap();
+  $('volhint').textContent = `(Vol + = ${controlLabel(vm.up)}, Vol − = ${controlLabel(vm.down)})`;
 }
 // Transparencia de todos los botones. cfg.alpha = % de opacidad del fondo; sin elegir (automatica): solidos, y
 // translucidos solo mientras se ve la pantalla del PC detras. Lo que se ajuste en un boton con el editor (✎) gana
@@ -384,7 +396,10 @@ function note(t) {
   $('gst').textContent = t; clearTimeout(note.timer);
   if (t) note.timer = setTimeout(() => { $('gst').textContent = ''; }, 6000);
 }
-function buzz() { if (cfg.haptic !== false && navigator.vibrate) { try { navigator.vibrate(8); } catch (e) {} } }
+// Vibracion segun lo que se toca: boton = pulso corto y seco; gatillo = algo mas largo (se nota distinto);
+// palanca al tope = un toque minimo, como el clic del borde de una palanca de verdad
+const BUZZ = { btn:9, trig:18, edge:5 };
+function buzz(kind = 'btn') { if (cfg.haptic !== false && navigator.vibrate) { try { navigator.vibrate(BUZZ[kind] || 9); } catch (e) {} } }
 function setStep(s) { $('home').hidden = s !== 'home'; $('sett').hidden = s !== 'sett'; }
 $('toset').addEventListener('click', () => setStep('sett'));
 if (SRV || BT) { $('swpc').hidden = false; $('swpc').addEventListener('click', () => { if (ws) { ws.onclose = null; ws.close(); } location.href = 'index.html'; }); }   // vuelve a la pantalla de la app
@@ -403,7 +418,7 @@ menu.addEventListener('click', e => {
 $('sens').addEventListener('input', e => { cfg.sens = +e.target.value; });
 $('perfil').addEventListener('input', e => { cfg.profile = e.target.value; });
 for (const b of menu.querySelectorAll('[data-fd]')) b.addEventListener('click', () => { cfg.fightDpad = b.dataset.fd === '1'; syncMenu(); });
-for (const id of ['inv', 'invY', 'hold', 'accelA', 's2', 'haptic']) $(id).addEventListener('change', e => { cfg[id] = e.target.checked; });
+for (const id of ['inv', 'invY', 'hold', 'accelA', 's2', 'haptic', 'float', 'vol']) $(id).addEventListener('change', e => { cfg[id] = e.target.checked; });
 $('gear').addEventListener('click', () => showMenu());
 
 // ---- pantalla completa (solo se puede pedir dentro de un toque; en iPhone Safari no existe) ----
@@ -435,7 +450,7 @@ $('go').addEventListener('click', async () => {
 });
 
 // ---- pantalla del PC detras de los botones: el servidor manda fotos JPEG por un websocket aparte ----
-let sws = null, swsParams = '', screenLive = false, lastFrame = 0, h264ok = false;
+let sws = null, swsParams = '', screenLive = false, lastFrame = 0, h264ok = false, ackOk = false;
 function screenOn() { return screenLive && cfg.screen !== false; }
 // H.264 (mas fluido y ligero) si el servidor puede codificarlo y este navegador puede decodificarlo; si no, JPEG
 function useVid() { return h264ok && window.isSecureContext && 'VideoDecoder' in window && 'EncodedVideoChunk' in window; }
@@ -469,7 +484,7 @@ function decodeH264(buf) {
     if (!dec || codec !== decCodec) {   // primera vez o el servidor cambio de perfil/calidad: decodificador nuevo
       resetDecoder(); decCodec = codec;
       dec = new VideoDecoder({
-        output: f => { if (pend) pend.close(); pend = f; if (!raf) raf = requestAnimationFrame(paintVideo); },
+        output: f => { if (pend) pend.close(); pend = f; paintVideo(); },   // se pinta al salir, sin esperar al siguiente frame de pantalla
         error: () => { h264ok = false; closeScreen(); setTimeout(syncScreen, 300); }  // no se pudo: se pasa a JPEG
       });
       dec.configure({ codec, optimizeForLatency: true, avc: { format: 'annexb' } });
@@ -477,10 +492,11 @@ function decodeH264(buf) {
     needKey = false;
   }
   if (!dec || needKey) return;
-  if (dec.decodeQueueSize > 8) { closeScreen(); setTimeout(syncScreen, 100); return; }   // el movil no da abasto: se pide de nuevo desde una clave
+  if (dec.decodeQueueSize > 3) { closeScreen(); setTimeout(syncScreen, 100); return; }   // el movil no da abasto: se pide de nuevo desde una clave (mejor que ir atrasado)
   dec.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: Math.round(performance.now() * 1000), data }));
 }
 function syncScreen() {
+  syncVol();
   const on = cfg.screen !== false;
   $('scrgo').classList.toggle('sel', on);
   $('scrgo').textContent = on ? '📺 Pantalla: Sí' : '📺 Pantalla: No';
@@ -500,8 +516,10 @@ function syncScreen() {
 function closeScreen() { const s = sws; sws = null; resetDecoder(); if (s) s.close(); }
 function openScreen(params) {
   swsParams = params;
-  const s = sws = new WebSocket(`${WSB}/screen?k=${encodeURIComponent(key)}&${params}`);
-  const vid = params.includes('v=h264');
+  // ack=1: se confirma cada foto al llegar y el PC no manda mas de 2-4 sin confirmar. Asi no se quedan fotos en cola
+  // en la WiFi o en el tunel del cable (la imagen ya no va cada vez mas tarde)
+  const s = sws = new WebSocket(`${WSB}/screen?k=${encodeURIComponent(key)}&${params}${ackOk ? '&ack=1' : ''}`);
+  const vid = params.includes('v=h264'), ack = ackOk;
   s.binaryType = vid ? 'arraybuffer' : 'blob';
   lastFrame = Date.now();
   let busy = false;
@@ -510,6 +528,7 @@ function openScreen(params) {
     lastFrame = Date.now();
     if (typeof e.data === 'string') { if (sws === s) showPart(JSON.parse(e.data).r); return; }
     if (sws !== s) return;
+    if (ack && s.readyState === 1) s.send('a');
     if (vid) { if (new Uint8Array(e.data)[0] === 72) decodeH264(e.data); return; }   // 72 = 'H'
     if (busy) return;
     busy = true;
@@ -538,7 +557,7 @@ document.addEventListener('visibilitychange', syncScreen);
 
 // Se vuelve a preguntar cada pocos segundos: desde el panel del PC se puede encender o apagar la pantalla
 function loadInfo() { if (BT) return; fetch(`${API}/info?k=${encodeURIComponent(key)}`).then(r => r.json()).then(i => {
-  screenLive = !!i.live; h264ok = !!i.h264;
+  screenLive = !!i.live; h264ok = !!i.h264; ackOk = !!i.ack;
   $('scrgo').hidden = $('scr').hidden = $('viewrow').hidden = !screenLive;
   syncScreen();
 }).catch(() => {}); }
@@ -700,7 +719,7 @@ function applyLayout() {
     if (o.w) setPos(el, o);
     paint(el, o);
   }
-  if (sel && ctl[sel]) ctl[sel].classList.add('esel');
+  for (const k of selIds()) ctl[k].classList.add('esel');
 }
 
 // Colores del editor. Botones: bg = fondo, fg = letra. Palancas: bg = bola, fg = aro y base
@@ -748,18 +767,29 @@ function startEdit() {
   releaseAll(); editing = true; sel = null;
   draft = JSON.parse(JSON.stringify(layouts[layoutKey()] || {}));
   document.body.classList.add('edit'); $('ebar').hidden = false; $('eadd').hidden = true;
-  build();
+  build(); syncVol();
 }
 function stopEdit() {
   editing = false; sel = null; touches.clear(); gest = null;
   document.body.classList.remove('edit'); $('ebar').hidden = true; $('eadd').hidden = true;
-  build();
+  build(); syncVol();
+}
+// En bloque: tocar una flecha de la cruceta (o un boton de accion, o uno de los 8 de Peleas) elige todo su grupo,
+// que se mueve, cambia de tamano, se pinta y se quita junto sin deformarse. Uno a uno: cada boton por su lado
+let block = load('eblock') !== '0';
+function blockBtn() { $('eblock').textContent = block ? '🔗 En bloque' : '⛓ Uno a uno'; $('eblock').classList.toggle('on', block); }
+function selIds() {
+  const el = sel && ctl[sel];
+  if (!el) return [];
+  if (!block || !el._grp) return [sel];
+  return Object.keys(ctl).filter(k => { const c = ctl[k]; return c._grp === el._grp && c.style.display !== 'none' && c._p.a === el._p.a; });
 }
 function select(id) {
-  if (sel && ctl[sel]) ctl[sel].classList.remove('esel');
+  for (const k in ctl) ctl[k].classList.remove('esel');
   sel = id && ctl[id] ? id : null;
-  if (sel) ctl[sel].classList.add('esel');
+  for (const k of selIds()) ctl[k].classList.add('esel');
 }
+const snapSel = () => { const ps = {}; for (const k of selIds()) ps[k] = { ...ctl[k]._p }; return ps; };
 function clampPos(p) {
   const u = unit(), W = pad.clientWidth / u, cs = getComputedStyle(document.documentElement);
   const sl = parseFloat(cs.getPropertyValue('--sl')) / u || 0, sr = parseFloat(cs.getPropertyValue('--sr')) / u || 0;
@@ -767,10 +797,25 @@ function clampPos(p) {
   p.x = p.a === 'c' ? clamp(p.x, -W / 2 + sl, W / 2 - sr - p.w) : clamp(p.x, 0, W - sl - sr - p.w);
   return p;
 }
-function resizeP(p, k) {   // crece o encoge alrededor de su centro
-  const w = clamp(p.w * k, 3, 30), h = clamp(p.h * w / p.w, 1, 32);
-  p.x -= (w - p.w) / 2; p.y -= (h - p.h) / 2; p.w = w; p.h = h;
-  return p;
+function bbox(ps) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, a = 'c';
+  for (const k in ps) { const p = ps[k]; a = p.a; x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x + p.w); y1 = Math.max(y1, p.y + p.h); }
+  return { a, x:x0, y:y0, w:x1 - x0, h:y1 - y0 };
+}
+// Mueve (dx, dy en u, ya en el sentido del ancla) y escala k veces alrededor del centro uno o varios controles a la vez.
+// Si el bloque toca un borde se para entero, asi la cruceta nunca se deforma (y sigue dando diagonales)
+function moveBlock(ps, dx, dy, k = 1) {
+  const ids = Object.keys(ps); if (!ids.length) return;
+  const r0 = bbox(ps);
+  for (const id of ids) k = clamp(k, 3 / ps[id].w, 30 / ps[id].w);   // ningun boton menor de 3u ni mayor de 30u
+  k = Math.min(k, 32 / r0.h);
+  const cx = r0.x + r0.w / 2, cy = r0.y + r0.h / 2, out = {};
+  for (const id of ids) {
+    const p = ps[id], w = p.w * k, h = p.h * k;
+    out[id] = { a:p.a, w, h, x:cx + (p.x + p.w / 2 - cx) * k - w / 2 + dx, y:cy + (p.y + p.h / 2 - cy) * k - h / 2 + dy };
+  }
+  const r = bbox(out), c = clampPos({ ...r });
+  for (const id of ids) { out[id].x += c.x - r.x; out[id].y += c.y - r.y; commit(id, out[id]); }
 }
 function commit(id, p) {
   const el = ctl[id]; if (!el) return;
@@ -782,8 +827,8 @@ function commit(id, p) {
 const touches = new Map();   // dedo -> [x, y] mientras se edita
 let gest = null;
 function startGesture() {
-  const el = sel && ctl[sel], pts = [...touches.values()];
-  gest = el && pts.length ? { p:{ ...el._p }, pts, d:pts.length > 1 ? Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]) : 0 } : null;
+  const ps = snapSel(), pts = [...touches.values()];
+  gest = Object.keys(ps).length && pts.length ? { ps, pts, d:pts.length > 1 ? Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]) : 0 } : null;
 }
 // En modo edicion el pad intercepta los toques antes que los botones (fase de captura): nada llega al PC
 pad.addEventListener('pointerdown', e => {
@@ -798,13 +843,12 @@ pad.addEventListener('pointermove', e => {
   if (!editing || !touches.has(e.pointerId)) return;
   e.stopPropagation(); touches.set(e.pointerId, [e.clientX, e.clientY]);
   if (!gest) return;
-  const pts = [...touches.values()], p = { ...gest.p }, u = unit();
-  if (pts.length > 1 && gest.d) resizeP(p, Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]) / gest.d);
+  const pts = [...touches.values()], u = unit(), a = bbox(gest.ps).a;
+  if (pts.length > 1 && gest.d) moveBlock(gest.ps, 0, 0, Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]) / gest.d);
   else {
     const dx = (pts[0][0] - gest.pts[0][0]) / u;
-    p.x += p.a === 'r' ? -dx : dx; p.y += (pts[0][1] - gest.pts[0][1]) / u;
+    moveBlock(gest.ps, a === 'r' ? -dx : dx, (pts[0][1] - gest.pts[0][1]) / u);
   }
-  commit(sel, p);
 }, true);
 for (const t of ['pointerup', 'pointercancel']) pad.addEventListener(t, e => {
   if (!editing || !touches.has(e.pointerId)) return;
@@ -812,12 +856,16 @@ for (const t of ['pointerup', 'pointercancel']) pad.addEventListener(t, e => {
 }, true);
 
 $('edit').addEventListener('click', startEdit);
-$('eplus').addEventListener('click', () => sel && commit(sel, resizeP({ ...ctl[sel]._p }, 1.12)));
-$('eminus').addEventListener('click', () => sel && commit(sel, resizeP({ ...ctl[sel]._p }, 1 / 1.12)));
+blockBtn();
+$('eblock').addEventListener('click', () => { block = !block; store('eblock', block ? '1' : '0'); blockBtn(); select(sel); });
+$('eplus').addEventListener('click', () => sel && moveBlock(snapSel(), 0, 0, 1.12));
+$('eminus').addEventListener('click', () => sel && moveBlock(snapSel(), 0, 0, 1 / 1.12));
 $('edel').addEventListener('click', () => {
-  if (!sel) return;
-  if (draft[sel] && draft[sel].add) delete draft[sel]; else draft[sel] = { hidden:1 };
-  ctl[sel].style.display = 'none'; select(null);
+  for (const k of selIds()) {
+    if (draft[k] && draft[k].add) delete draft[k]; else draft[k] = { hidden:1 };
+    ctl[k].style.display = 'none';
+  }
+  select(null);
 });
 $('eaddb').addEventListener('click', () => {
   const box = $('eadd'); box.innerHTML = '';
@@ -846,15 +894,16 @@ function colorBox() {
     box.appendChild(t);
   };
   const isStick = !paintAll && sel && ctl[sel] && ctl[sel].classList.contains('stick');
-  if (sel) tabs([[false, 'Solo este'], [true, 'Todo el mando']], paintAll, v => { paintAll = v; });
+  if (sel) tabs([[false, selIds().length > 1 ? 'Este bloque' : 'Solo este'], [true, 'Todo el mando']], paintAll, v => { paintAll = v; });
   else box.appendChild(add('div', 'note', 'Pintando todo el mando · toca un botón antes para pintar solo ese'));
   tabs(isStick ? [['bg', 'Bola'], ['fg', 'Aro y base']] : paintAll ? [['bg', 'Fondos (y bolas)'], ['fg', 'Letras (y aros)']]
     : [['bg', 'Fondo'], ['fg', 'Letra']], paintPart, v => { paintPart = v; });
-  const id = paintAll ? '*' : sel, cur = draft[id] && draft[id][paintPart];
+  const id = paintAll ? '*' : sel, ids = paintAll ? ['*'] : selIds(), cur = draft[id] && draft[id][paintPart];
+  const edit = fn => {   // aplica el cambio al boton elegido o a todo su bloque
+    for (const k of ids) { const o = { ...(draft[k] || {}) }; fn(o); if (Object.keys(o).length) draft[k] = o; else delete draft[k]; }
+  };
   const setColor = c => {
-    const o = { ...(draft[id] || {}) };
-    if (c) o[paintPart] = c; else delete o[paintPart];
-    if (Object.keys(o).length) draft[id] = o; else delete draft[id];
+    edit(o => { if (c) o[paintPart] = c; else delete o[paintPart]; });
     build();
     for (const b of box.querySelectorAll('.sw')) b.classList.toggle('cur', b.dataset.c === (c || ''));
   };
@@ -870,10 +919,9 @@ function colorBox() {
   const trow = add('div', 'trow'), tlab = add('span', '', 'Transparencia ' + curT + '%'), rng = add('input');
   rng.type = 'range'; rng.min = 0; rng.max = 90; rng.step = 5; rng.value = curT;
   rng.oninput = () => {
-    const v = +rng.value, o = { ...(draft[id] || {}) };
+    const v = +rng.value;
     tlab.textContent = 'Transparencia ' + v + '%';
-    if (v) o.t = 100 - v; else delete o.t;
-    if (Object.keys(o).length) draft[id] = o; else delete draft[id];
+    edit(o => { if (v) o.t = 100 - v; else delete o.t; });
     build();
   };
   trow.append(tlab, rng); box.appendChild(trow);
@@ -1012,15 +1060,22 @@ function stick(a, cx, cy, size, onMove, ctlId = 'LS') {
   const base = document.createElement('div'); base.className = 'stick';
   const knob = document.createElement('div'); knob.className = 'knob';
   base.appendChild(knob); place(base, a, cx - size / 2, cy - size / 2, size); pad.appendChild(base);
-  let c = [0, 0], o = [0, 0], R = 1;
+  let c = [0, 0], o = [0, 0], R = 1, edge = false;
   base._stick = {
-    start(e) {
+    // flotar = el pulgar cayo en el hueco libre: la palanca entera salta bajo el dedo, centrada ahi
+    start(e, flotar) {
+      base.style.transform = '';
       const r = base.getBoundingClientRect(); R = r.width / 2 || 1; c = [r.left + R, r.top + R];
-      let dx = e.clientX - c[0], dy = e.clientY - c[1];
-      const d = Math.hypot(dx, dy), lim = R * .3;
-      if (d > lim) { dx *= lim / d; dy *= lim / d; }
-      o = [c[0] + dx, c[1] + dy];
-      base.classList.add('held'); this.move(e);
+      if (flotar) {
+        base.style.transform = `translate(${e.clientX - c[0]}px,${e.clientY - c[1]}px)`;
+        c = o = [e.clientX, e.clientY];
+      } else {
+        let dx = e.clientX - c[0], dy = e.clientY - c[1];
+        const d = Math.hypot(dx, dy), lim = R * .3;
+        if (d > lim) { dx *= lim / d; dy *= lim / d; }
+        o = [c[0] + dx, c[1] + dy];
+      }
+      edge = false; base.classList.add('held'); this.move(e);
     },
     move(e) {
       let dx = e.clientX - o[0], dy = e.clientY - o[1];
@@ -1028,10 +1083,12 @@ function stick(a, cx, cy, size, onMove, ctlId = 'LS') {
       if (d > T) { dx *= T / d; dy *= T / d; }
       knob.style.transform = `translate(${o[0] - c[0] + dx}px,${o[1] - c[1] + dy}px)`;
       const m = Math.min(1, d / T), k = m <= .08 ? 0 : (m - .08) / .92 / m;
+      if (!edge && m >= .97) { edge = true; base.classList.add('edge'); buzz('edge'); }   // al tope: un toque
+      else if (edge && m < .85) { edge = false; base.classList.remove('edge'); }
       onMove(dx / T * k, dy / T * k);
       sendSticks();  // inmediato, sin esperar al frame
     },
-    end() { base.classList.remove('held'); knob.style.transform = ''; onMove(0, 0); sendSticks(); }
+    end() { base.classList.remove('held', 'edge'); base.style.transform = ''; knob.style.transform = ''; onMove(0, 0); sendSticks(); }
   };
   return reg(base, ctlId);
 }
@@ -1039,7 +1096,7 @@ function stick(a, cx, cy, size, onMove, ctlId = 'LS') {
 function trigger(side, label, a, x, y, w, h, o = {}) {
   const el = document.createElement('div'); el.className = 'b sq'; decorate(el, label, o); place(el, a, x, y, w, h);
   const own = new Set();
-  const set = v => { if (state[side] === v) return; state[side] = v; send({ t:'trig', l:state.l, r:state.r }); if (v) buzz(); };
+  const set = v => { if (state[side] === v) return; state[side] = v; send({ t:'trig', l:state.l, r:state.r }); if (v) buzz('trig'); };
   el._grp = o.g || '';
   el._down = id => { own.add(id); el.classList.add('on'); set(1); };
   el._up = id => { own.delete(id); if (!own.size) { el.classList.remove('on'); set(0); } };
@@ -1110,8 +1167,13 @@ document.addEventListener('pointerdown', e => {
   let el = e.target.closest('.b,.stick');
   if (el && !el._down && !el._stick) return;   // interruptores (GYRO, MOVER): tienen su propio toque
   if (!el) el = nearCtl(e.clientX, e.clientY);
+  let flotar = false;
+  if (!el && (el = floatZone(e.clientX, e.clientY))) flotar = true;
   if (!el) return;
-  if (el._stick) { fingers.set(e.pointerId, { stick:el._stick }); el._stick.start(e); return; }
+  if (el._stick) {
+    for (const f of fingers.values()) if (f.stick === el._stick) return;   // esa palanca ya la lleva otro dedo
+    fingers.set(e.pointerId, { stick:el._stick }); el._stick.start(e, flotar); return;
+  }
   const f = { grp:el._grp, els:[] };
   fingers.set(e.pointerId, f);
   const t = f.grp ? targets(f, e) : [];
@@ -1127,6 +1189,45 @@ for (const t of ['pointerup', 'pointercancel']) document.addEventListener(t, e =
   fingers.delete(e.pointerId);
   if (f.stick) f.stick.end(); else setHeld(e.pointerId, f, []);
 });
+
+// Palanca flotante: un toque en el hueco libre de la mitad izquierda (por debajo de gatillos y hombros) coge la
+// palanca izquierda alli mismo. No en Peleas con cruceta: ahi el pulgar izquierdo va a la cruceta
+function floatZone(x, y) {
+  const ls = ctl.LS;
+  if (cfg.float === false || !ls || !ls._stick || ls.style.display === 'none') return null;
+  if (cfg.mode === 'peleas' && cfg.fightDpad) return null;
+  const pr = pad.getBoundingClientRect();
+  return x < innerWidth * .45 && y > pr.top + pr.height * .3 ? ls : null;
+}
+
+// ---- botones de volumen (solo en la app de Android): hacen de gatillos u hombros segun el tipo de juego ----
+function volMap() {
+  const m = cfg.mode;
+  if (m === 'disparos') return { up:'RT', down:'LT' };   // disparar / apuntar sin soltar los pulgares de las palancas
+  if (m === 'carreras') return cfg.accelA ? { up:cfg.type === 'switch' ? 'B' : 'A', down:cfg.type === 'switch' ? 'A' : 'B' } : { up:'RT', down:'LT' };   // acelerar / frenar
+  return { up:'RB', down:'LB' };   // general, peleas y deportes (RB = sprint, LB = cambiar jugador)
+}
+let volOn = null;
+function syncVol() {
+  const want = VOLKEYS && !!cfg.vol && !!type && menu.hidden && !editing && !document.hidden;
+  if (want === volOn) return;
+  volOn = want;
+  try { Promise.resolve(Capacitor.Plugins.BtPad.volumeKeys({ on:want })).catch(() => {}); } catch (e) {}   // app vieja sin esta funcion: no pasa nada
+}
+// Al salir del mando (cambiar de PC, cerrar) el volumen vuelve a ser volumen
+addEventListener('pagehide', () => { if (volOn) { volOn = null; try { Capacitor.Plugins.BtPad.volumeKeys({ on:false }); } catch (e) {} } });
+const volHeld = {};
+window.onVolKey = (which, down) => {
+  if (!volOn) return;
+  const name = volMap()[which], on = !!down;
+  if (volHeld[which] === on) return;
+  volHeld[which] = on;
+  if (name === 'LT' || name === 'RT') {
+    const side = name === 'LT' ? 'l' : 'r';
+    state[side] = on ? 1 : 0; send({ t:'trig', l:state.l, r:state.r });
+    if (on) buzz('trig');
+  } else hold(name, 'vol-' + which, on);
+};
 
 // La palanca de Peleas tambien pulsa la cruceta (8 direcciones, con margen para no fallar al diagonal)
 function stickToDpad(x, y) {

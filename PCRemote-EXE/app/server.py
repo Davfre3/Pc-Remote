@@ -28,6 +28,11 @@ import qrcode.image.svg
 import vgamepad as vg
 from aiohttp import WSMsgType, web
 
+try:  # captura por DXGI (la de OBS/Parsec): ~2 ms por foto frente a ~25 ms de mss. Si falta, se usa mss
+    import dxcam
+except Exception:
+    dxcam = None
+
 try:  # video H.264 propio (sin Moonlight); si falta, la pantalla sigue yendo en JPEG
     import av
     from fractions import Fraction
@@ -716,14 +721,18 @@ PARTS = {"top": (0.0, 0.0, 1.0, 0.5), "bottom": (0.0, 0.5, 1.0, 1.0),
          "bl": (0.0, 0.5, 0.5, 1.0), "br": (0.5, 0.5, 1.0, 1.0)}
 
 
-# Video H.264: (ancho maximo, bits por segundo) segun cuantos moviles miran; 30 fps
-H264_TIERS = {1: (1280, 5_000_000), 2: (1152, 3_500_000), 3: (960, 2_500_000)}
+# Video H.264: (ancho maximo, bits por segundo, fotos por segundo) segun cuantos moviles miran.
+# Con uno solo van 60 fps: cada foto llega ~8 ms antes de media y se ve mas fluido
+H264_TIERS = {1: (1280, 8_000_000, 60), 2: (1152, 4_000_000, 30), 3: (960, 2_500_000, 30)}
 H264_FPS = 30
+# Fotos enviadas que el movil aun no ha confirmado. Por encima se saltan fotos: si no, se quedan en cola en la
+# red (WiFi o el tunel de adb por cable) y la imagen va cada vez mas tarde aunque el movil pueda con ella
+MAX_INFLIGHT = {False: 2, True: 4}
 # Se prueba en este orden: tarjeta grafica primero (casi no gasta CPU) y x264 como ultimo recurso
 H264_CHOICES = (
-    ("h264_nvenc", {"preset": "p1", "tune": "ll", "zerolatency": "1", "rc": "cbr", "bf": "0", "delay": "0"}),
-    ("h264_amf", {"usage": "ultralowlatency", "quality": "speed"}),
-    ("h264_qsv", {"preset": "veryfast", "look_ahead": "0"}),
+    ("h264_nvenc", {"preset": "p1", "tune": "ll", "zerolatency": "1", "rc": "cbr", "bf": "0", "delay": "0", "forced-idr": "1"}),
+    ("h264_amf", {"usage": "ultralowlatency", "quality": "speed", "forced_idr": "1"}),
+    ("h264_qsv", {"preset": "veryfast", "look_ahead": "0", "async_depth": "1", "forced_idr": "1"}),
     ("libx264", {"preset": "ultrafast", "tune": "zerolatency"}),
 )
 _h264 = False  # False = aun sin probar; None = ningun codificador funciona
@@ -739,7 +748,7 @@ def h264_choice():
         return None
     for name, opts in H264_CHOICES:
         try:
-            H264Encoder(320, 180, 1_000_000, (name, opts)).encode(np.zeros((180, 320, 3), np.uint8), True)
+            H264Encoder(320, 180, 1_000_000, (name, opts)).encode(np.zeros((180, 320, 4), np.uint8), True)
             _h264 = (name, opts)
             break
         except Exception as e:
@@ -750,19 +759,20 @@ def h264_choice():
 class H264Encoder:
     """Un codificador por recorte de pantalla. Salida Annex B con SPS/PPS en cada fotograma clave."""
 
-    def __init__(self, w, h, bitrate, choice=None):
+    def __init__(self, w, h, bitrate, choice=None, fps=H264_FPS):
         name, opts = choice or h264_choice()
         c = av.CodecContext.create(name, "w")
         c.width, c.height, c.pix_fmt = w, h, "yuv420p"
-        c.time_base, c.framerate = Fraction(1, H264_FPS), Fraction(H264_FPS, 1)
-        c.bit_rate, c.gop_size, c.max_b_frames = bitrate, H264_FPS * 2, 0
+        c.time_base, c.framerate = Fraction(1, fps), Fraction(fps, 1)
+        c.bit_rate, c.gop_size, c.max_b_frames = bitrate, fps * 2, 0
         c.options = dict(opts)
         c.open()
-        self.c, self.size, self.bitrate, self.n = c, (w, h), bitrate, 0
+        self.c, self.size, self.bitrate, self.fps, self.n = c, (w, h), bitrate, fps, 0
 
-    def encode(self, bgr, key=False):
-        """Devuelve el mensaje listo para el websocket: b'H' + (1 si es clave) + datos; None si aun no hay salida."""
-        f = av.VideoFrame.from_ndarray(bgr, format="bgr24").reformat(format="yuv420p")
+    def encode(self, bgra, key=False):
+        """Devuelve el mensaje listo para el websocket: b'H' + (1 si es clave) + datos; None si aun no hay salida.
+        La conversion a YUV la hace OpenCV (~1 ms a 720p; la de PyAV tarda ~7 ms)."""
+        f = av.VideoFrame.from_ndarray(cv2.cvtColor(bgra, cv2.COLOR_BGRA2YUV_I420), format="yuv420p")
         f.pts, self.n = self.n, self.n + 1
         if key:
             f.pict_type = av.video.frame.PictureType.I
@@ -770,6 +780,61 @@ class H264Encoder:
         if not pk:
             return None
         return b"H" + (b"\x01" if any(p.is_keyframe for p in pk) else b"\x00") + b"".join(bytes(p) for p in pk)
+
+
+class Capture:
+    """Pantalla principal en BGRA (sin copias: los recortes y el redimensionado trabajan sobre ella).
+    DXGI con dxcam (~2 ms, la imagen sale de la tarjeta grafica); si no se puede (escritorio remoto, driver raro),
+    GDI con mss (~25 ms). Tiene que vivir y usarse siempre en el mismo hilo."""
+
+    def __init__(self):
+        self.cam = self.sct = None
+        if dxcam is not None:
+            for dev in range(3):  # portatiles con dos graficas: la pantalla puede colgar de cualquiera
+                try:
+                    self.cam = dxcam.create(device_idx=dev, output_color="BGRA")
+                    if self.grab() is not None:
+                        break
+                except Exception as e:
+                    diag(f"  captura DXGI (grafica {dev}) no disponible: {e}")
+                self.close()
+        if self.cam is None:
+            self.sct = mss.mss()
+
+    def grab(self):
+        if self.cam is not None:
+            for _ in range(20):  # nada cambio desde la ultima: devuelve la anterior; la primera puede tardar
+                f = self.cam.grab(copy=False, new_frame_only=False)
+                if f is not None:
+                    return f
+                time.sleep(0.005)
+            return None
+        s = self.sct.grab(self.sct.monitors[1])
+        return np.frombuffer(s.raw, np.uint8).reshape(s.height, s.width, 4)
+
+    def close(self):
+        for obj, fn in ((self.cam, "release"), (self.sct, "close")):
+            if obj is not None:
+                try:
+                    getattr(obj, fn)()
+                except Exception:
+                    pass
+        self.cam = self.sct = None
+
+
+class Acks:
+    """Cuantas fotos ha mandado el PC a un movil sin que este diga que le han llegado."""
+
+    def __init__(self):
+        self.pending, self.last = 0, time.monotonic()
+
+    def got(self):
+        self.pending, self.last = max(0, self.pending - 1), time.monotonic()
+
+    def full(self, h264):
+        if self.pending and time.monotonic() - self.last > 1.5:  # una confirmacion perdida no puede parar la imagen
+            self.pending = 0
+        return self.pending >= MAX_INFLIGHT[h264]
 
 
 class ScreenFeed:
@@ -789,10 +854,19 @@ class ScreenFeed:
         n = min(3, max(1, len(self.wanted)))
         return SCREEN_TIERS[n], H264_TIERS[n]
 
-    def _grab(self, sct, wants, width, quality, h264):
+    def _paced(self, due, cap, *args):
+        """Espera en el hilo de captura hasta la hora de la foto: el sleep de asyncio en Windows va de 15 en 15 ms
+        y no llegaba a 60 fps; time.sleep usa el temporizador de alta resolucion."""
+        wait = due - time.perf_counter()
+        if wait > 0:
+            time.sleep(wait)
+        return self._grab(cap, *args)
+
+    def _grab(self, cap, wants, width, quality, h264):
         """wants = {(recorte, es_h264)}. Devuelve {(recorte, es_h264): mensaje} (JPEG a pelo; H.264 con prefijo 'H')."""
-        mon = sct.monitors[1]
-        img = np.asarray(sct.grab(mon))[:, :, :3]
+        img = cap.grab()
+        if img is None:
+            raise RuntimeError("sin imagen")
         H, W = img.shape[:2]
         out = {}
         for r in {r for r, _ in wants}:
@@ -800,21 +874,21 @@ class ScreenFeed:
             h, w = part.shape[:2]
             if (r, False) in wants:
                 ow = min(width, w)
-                small = cv2.resize(part, (ow, round(ow * h / w)), interpolation=cv2.INTER_AREA)
+                small = cv2.cvtColor(cv2.resize(part, (ow, round(ow * h / w)), interpolation=cv2.INTER_AREA), cv2.COLOR_BGRA2BGR)
                 out[(r, False)] = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, quality])[1].tobytes()
             if (r, True) in wants:
-                hw, bitrate = h264
+                hw, bitrate, fps = h264
                 ow = max(2, min(hw, w) & ~1)  # H.264 pide medidas pares
                 oh = max(2, round(ow * h / w) & ~1)
                 enc = self.enc.get(r)
-                if enc is None or enc.size != (ow, oh) or enc.bitrate != bitrate:
-                    enc = self.enc[r] = H264Encoder(ow, oh, bitrate)  # recorte nuevo o calidad distinta: empieza con clave
+                if enc is None or enc.size != (ow, oh) or enc.bitrate != bitrate or enc.fps != fps:
+                    enc = self.enc[r] = H264Encoder(ow, oh, bitrate, fps=fps)  # recorte nuevo o calidad distinta: empieza con clave
                     self.force.discard(r)
                     key = True
                 else:
                     key = r in self.force
                     self.force.discard(r)
-                msg = enc.encode(cv2.resize(part, (ow, oh), interpolation=cv2.INTER_AREA), key)
+                msg = enc.encode(cv2.resize(part, (ow, oh), interpolation=cv2.INTER_AREA), key)  # sobre BGRA: ~2 ms, no ~25
                 if msg is not None:
                     out[(r, True)] = msg
         for r in [r for r in self.enc if (r, True) not in wants]:
@@ -826,10 +900,10 @@ class ScreenFeed:
         hilo, borra la ultima foto) y se reabre limpia cuando vuelve un visor: no queda nada vivo ni
         con la calidad de antes."""
         loop = asyncio.get_running_loop()
-        # mss guarda estado por hilo: un solo hilo dedicado para todas las capturas
+        # la captura guarda estado por hilo: un solo hilo dedicado para todas las capturas
         from concurrent.futures import ThreadPoolExecutor
         pool = ThreadPoolExecutor(1)
-        sct = None
+        cap, due = None, 0.0
         try:
             while True:
                 if not self.wanted:
@@ -840,30 +914,32 @@ class ScreenFeed:
                         if not self.wanted:
                             break
                         continue
-                t = loop.time()
                 (width, quality, fps), h264 = self.tier()
                 wants = set(self.wanted.values())
                 if any(v for _, v in wants):
-                    fps = H264_FPS
+                    fps = h264[2]
                 try:
-                    if sct is None:
-                        sct = await loop.run_in_executor(pool, mss.mss)
-                    frames = await loop.run_in_executor(pool, self._grab, sct, wants, width, quality, h264)
+                    if cap is None:
+                        cap = await loop.run_in_executor(pool, Capture)
+                        diag(f"  captura de pantalla: {'DXGI' if cap.cam is not None else 'GDI (mss)'}")
+                    frames = await loop.run_in_executor(pool, self._paced, due, cap, wants, width, quality, h264)
                 except Exception as e:  # p. ej. pantalla bloqueada o cambio de resolucion: se reabre la captura
                     diag(f"  captura fallida: {e}")
-                    sct = None
+                    if cap is not None:
+                        await loop.run_in_executor(pool, cap.close)
+                    cap = None
                     await asyncio.sleep(0.5)
                     continue
                 async with self.cond:
                     self.frames, self.seq = frames, self.seq + 1
                     self.cond.notify_all()
-                await asyncio.sleep(max(0, 1 / fps - (loop.time() - t)))
+                due = max(due + 1 / fps, time.perf_counter())  # si una foto se retrasa no se recupera a rafagas
         finally:
             self.frames, self.enc = {}, {}
             self.force.clear()
-            if sct is not None:
+            if cap is not None:
                 try:
-                    await loop.run_in_executor(pool, sct.close)
+                    await loop.run_in_executor(pool, cap.close)
                 except Exception:
                     pass
             pool.shutdown(wait=False)
@@ -872,7 +948,7 @@ class ScreenFeed:
             if self.task:
                 self.wake.set()
 
-    async def serve(self, ws, region, h264=False):
+    async def serve(self, ws, region, h264=False, acks=None):
         """region() dice en cada foto que parte mandar: cambia sola si entra o sale un jugador.
         En H.264 cada foto depende de la anterior: si este movil se salta alguna (red lenta) se descarta todo
         hasta el siguiente fotograma clave, que se pide al momento."""
@@ -898,6 +974,9 @@ class ScreenFeed:
                     frame, seen = self.frames.get((r, h264)), self.seq
                 if frame is None:  # recorte recien cambiado: llega en la proxima foto
                     continue
+                if acks is not None and acks.full(h264):  # el movil va atrasado: esta foto no sale
+                    synced = not h264
+                    continue
                 if h264:
                     if missed:
                         synced = False
@@ -909,6 +988,8 @@ class ScreenFeed:
                 # send_bytes espera a que salga el anterior: un movil lento salta fotogramas en vez de acumularlos.
                 # Con la red muerta (movil que se fue sin cerrar) la espera no acabaria nunca: se corta
                 await asyncio.wait_for(ws.send_bytes(frame), 5)
+                if acks is not None:
+                    acks.pending += 1
         except (ConnectionResetError, asyncio.TimeoutError, asyncio.CancelledError):
             pass
         finally:
@@ -939,9 +1020,17 @@ async def screen_ws(request):
     ws = web.WebSocketResponse(heartbeat=4, compress=False)
     await ws.prepare(request)
     app["screen_wss"].add(ws)
-    reader = asyncio.create_task(ws.receive())  # detecta el cierre aunque no llegue ningun mensaje
+    # Las apps nuevas confirman cada foto que reciben ("a"); las viejas no, y para ellas se envia como antes
+    acks = Acks() if request.query.get("ack") == "1" else None
+
+    async def read():  # tambien detecta el cierre aunque no llegue ningun mensaje
+        async for m in ws:
+            if m.type == WSMsgType.TEXT and acks is not None:
+                acks.got()
+
+    reader = asyncio.create_task(read())
     h264 = request.query.get("v") == "h264" and h264_choice() is not None
-    sender = asyncio.create_task(app["feed"].serve(ws, region, h264))
+    sender = asyncio.create_task(app["feed"].serve(ws, region, h264, acks))
     await asyncio.wait({reader, sender}, return_when=asyncio.FIRST_COMPLETED)
     sender.cancel()
     reader.cancel()
@@ -954,7 +1043,8 @@ async def info(request):
     """La pagina pregunta al cargar si hay pantalla y si el PC sabe mandar video H.264."""
     if request.query.get("k") != request.app["token"]:
         raise web.HTTPForbidden(text="PIN incorrecto")
-    return web.json_response({"live": bool(request.app["feed"]), "h264": h264_choice() is not None})
+    # ack: este PC entiende las confirmaciones de foto (un PC viejo cortaria la imagen al recibir la primera)
+    return web.json_response({"live": bool(request.app["feed"]), "h264": h264_choice() is not None, "ack": True})
 
 
 async def hello(request):

@@ -331,14 +331,14 @@ async function btScan() {
     btDevs.set(d.address, { ...old, ...d, name: d.name || old.name, paired: d.paired || old.paired, computer: d.computer || old.computer });
     drawBt();
   }));
-  btHandles.push(await P.addListener('scanEnd', () => { btScanning = false; btStatus(btDevs.size ? 'Toca tu PC. Si no aparece, pulsa «Buscar de nuevo».' : 'No se encontró ningún dispositivo. Abre Configuración > Bluetooth en el PC y pulsa «Buscar de nuevo».', !btDevs.size); }));
+  btHandles.push(await P.addListener('scanEnd', () => { btScanning = false; if (btBusy) return; btStatus(btDevs.size ? 'Toca tu PC. Si no aparece, pulsa «Buscar de nuevo».' : 'No se encontró ningún dispositivo. Abre Configuración > Bluetooth en el PC y pulsa «Buscar de nuevo».', !btDevs.size); }));
   try { await P.scan(); btScanning = true; btStatus('Buscando dispositivos cercanos…', false, true); }
   catch (e) { btStatus(errText(e), true); }
 }
 async function openBt() {
   const P = BTP();
   if (!P) { say('El Bluetooth solo está en la app del móvil.', 'err'); return; }
-  btDevs = new Map(); drawBt(); $('btov').classList.add('show'); btStatus('Preparando…', false, true);
+  btBusy = false; btDevs = new Map(); drawBt(); $('btov').classList.add('show'); btStatus('Preparando…', false, true);
   try {
     const r = await P.devices();
     if (!r.enabled) { btStatus('Activa el Bluetooth del móvil y pulsa «Buscar de nuevo».', true); return; }
@@ -347,18 +347,27 @@ async function openBt() {
   btScan();
 }
 $('btbtn').onclick = openBt;
-$('btagain').onclick = () => { const P = BTP(); if (P) { P.stopScan().catch(() => {}); } btScan(); };
+$('btagain').onclick = () => { btBusy = false; const P = BTP(); if (P) { P.stopScan().catch(() => {}); } btScan(); };
 $('btclose').onclick = async () => { const P = BTP(); if (P) { P.stopScan().catch(() => {}); P.close().catch(() => {}); } await btClearListeners(); $('btov').classList.remove('show'); };
 
+// Mientras se empareja o se abre el mando, el escaner no debe pisar el aviso: antes, al parar la busqueda salia
+// «Toca tu PC…» encima de «Conectando…» y parecia que el toque no habia hecho nada
+let btBusy = false;
 async function btPick(d) {
-  const P = BTP(); P.stopScan().catch(() => {});
+  if (btBusy) return;
+  const P = BTP(); btBusy = true; P.stopScan().catch(() => {});
   if (!d.paired) {
     btStatus('Emparejando con ' + (d.name || d.address) + '… acepta el aviso en el móvil y en el PC', false, true);
-    try { await P.pair({ address: d.address }); d.paired = true; drawBt(); } catch (e) { btStatus(errText(e), true); return; }
+    try { await P.pair({ address: d.address }); d.paired = true; drawBt(); } catch (e) { btBusy = false; btStatus(errText(e), true); return; }
   }
-  // Un toque en el PC y se conecta: el emparejamiento ya es la confirmacion. Solo si el PC pide PIN, se pregunta
+  // Un toque en el PC y se va directo a elegir el mando: la conexion la abre el propio mando. Si el PC pide PIN,
+  // el mando vuelve aqui (?btpin=) y se pregunta. Antes se hacia una conexion de prueba entera antes de abrirlo
   const known = pcs.find(x => x.bt === d.address);
-  btProbe({ ...(known || {}), bt: d.address, name: d.name || (known && known.name) || '', pin: (known && known.pin) || '' });
+  const p = { ...(known || {}), bt: d.address, name: d.name || (known && known.name) || '', pin: (known && known.pin) || '', last: Date.now() };
+  if (known) Object.assign(known, p); else pcs.push(p);
+  save(); btStatus('Abriendo el mando…', false, true);
+  await btClearListeners();
+  btPlay(p);
 }
 
 // Se comprueba el canal y el PIN antes de abrir el mando (el PC contesta y cierra sin crear jugador)

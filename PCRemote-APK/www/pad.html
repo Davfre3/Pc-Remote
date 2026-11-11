@@ -103,13 +103,15 @@
   #ebar { position:fixed; top:0; left:50%; transform:translateX(-50%); display:flex; flex-wrap:wrap; justify-content:center; gap:6px; z-index:6; padding:6px;
     width:max-content; max-width:calc(100vw - var(--sl) - var(--sr) - 16px); background:rgba(17,20,24,.9); border-radius:0 0 12px 12px; }
   #ebar[hidden], #eadd[hidden] { display:none; }
-  #ebar button, #eadd button { font:700 clamp(12px,calc(var(--u)*1.7),18px) system-ui,sans-serif; padding:.5em .8em; min-height:34px; border:0; border-radius:9px; background:#2a3038; color:#fff; white-space:nowrap; }
+  #ebar button, #eadd button { font:700 clamp(12px,calc(var(--u)*1.45),17px) system-ui,sans-serif; padding:.45em .7em; min-height:34px; border:0; border-radius:9px; background:#2a3038; color:#fff; white-space:nowrap; }
   #ebar .ok { background:#25573a; } #ebar .del { background:#5a2a2e; } #ebar #eblock.on { background:#3a4f7a; }
   /* Panel de Añadir / Color: se coloca justo debajo de la barra (su alto cambia segun el movil) y, si no cabe, se desliza */
   #eadd { position:fixed; top:calc(var(--u)*5.5); left:50%; transform:translateX(-50%); z-index:7; display:flex; flex-wrap:wrap; gap:6px; justify-content:center; align-content:flex-start;
     width:min(calc(100vw - var(--sl) - var(--sr) - 16px),640px); padding:10px; overflow-y:auto; overscroll-behavior:contain; background:rgba(17,20,24,.96); border:1px solid #3a424d; border-radius:12px; }
   #eadd, #eadd * { touch-action:pan-y; }
-  #ehint { position:fixed; bottom:4px; left:50%; transform:translateX(-50%); z-index:6; font-size:clamp(10px,calc(var(--u)*1.4),15px); opacity:.7; text-align:center; width:max-content; max-width:calc(100vw - 16px); pointer-events:none; }
+  #ehint { position:fixed; bottom:4px; left:50%; transform:translateX(-50%); z-index:6; font-size:clamp(10px,calc(var(--u)*1.25),14px); opacity:.7; text-align:center; width:max-content; max-width:calc(100vw - 16px); pointer-events:none; }
+  /* al editar, el mando se encoge un poco y baja para quedar entero entre la barra y el aviso de abajo: nada queda tapado */
+  body.edit #pad { transform-origin:50% 0; }
   body:not(.edit) #ehint { display:none; }
   #gorow { display:flex; gap:1.6vmin; justify-content:center; align-items:stretch; margin-top:2.2vmin; }
   #gorow #go { margin-top:0; }
@@ -159,7 +161,7 @@
   <button id="ecopy">💾 Copias</button><button id="esave" class="ok">Guardar</button><button id="equit">Salir</button>
 </div>
 <div id="eadd" hidden></div>
-<div id="ehint">Toca un botón para elegirlo · arrastra para moverlo · pellizca con dos dedos o usa ＋ / － para cambiar su tamaño · con 🔗 En bloque la cruceta y los botones de acción se mueven juntos</div>
+<div id="ehint">Toca un botón para elegirlo · arrástralo para moverlo · pellizca o usa ＋ / － para el tamaño · la cruceta es una sola pieza</div>
 <div id="msg"><div id="msgtxt">Conectando…</div>
   <div id="menu" hidden>
     <div id="home">
@@ -758,30 +760,48 @@ function addControl(name) {
     if (name === 'LS') { state.lx = x; state.ly = -y; } else { state.rx = x; state.ry = -y; } }, name);
   if (name === 'LT' || name === 'RT') return trigger(name === 'LT' ? 'l' : 'r', controlLabel(name), 'c', -4.5, 13.5, 9, 5);
   if (name === 'HOME' && !B.home || name === 'TOUCHPAD' && !B.touchpad) return null;
+  // Las flechas anadidas forman una cruceta de verdad (en rombo, del grupo 'dpad'): se mueven, se pintan y se quitan
+  // juntas y siguen dando diagonales. Antes salian las cuatro una encima de otra en el centro
+  const d = DPAD_AT[name];
+  if (d) return button(name, controlLabel(name), 'c', d[0] - 2.6, 16 + d[1] - 2.6, 5.2, 5.2, { sq:true, g:'dpad' });
   return button(name, controlLabel(name), 'c', -3.5, 12.5, 7, 7, f[name] ? { color:f[name][1] } : { sq:true, f:2 });
 }
+const DIRS = ['UP', 'DOWN', 'LEFT', 'RIGHT'], DPAD_AT = { UP:[0, -5.6], DOWN:[0, 5.6], LEFT:[-5.6, 0], RIGHT:[5.6, 0] };
 
 // ---- editor: tocar elige, arrastrar mueve, pellizcar o +/- cambia el tamano ----
 const unit = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--u')) || 10;
+// Al editar, la barra de arriba y el aviso de abajo tapaban los botones del borde (LB, RB, gatillos, opciones).
+// El mando se encoge lo justo (mismas proporciones) y se coloca entre los dos, asi todo queda a la vista y se puede tocar
+let edScale = 1;
+function editFit() {
+  const s = pad.style;
+  if (!editing) { s.top = s.transform = ''; edScale = 1; return; }
+  const top = $('ebar').getBoundingClientRect().bottom + 4, bottom = $('ehint').getBoundingClientRect().top - 4;
+  const h = pad.offsetHeight, k = clamp((bottom - top) / h, .4, 1);
+  edScale = k;
+  s.top = (top + Math.max(0, (bottom - top - h * k) / 2)) + 'px';
+  s.transform = `scale(${k})`;
+}
+addEventListener('resize', () => { if (editing) editFit(); });
 function startEdit() {
   releaseAll(); editing = true; sel = null;
   draft = JSON.parse(JSON.stringify(layouts[layoutKey()] || {}));
   document.body.classList.add('edit'); $('ebar').hidden = false; $('eadd').hidden = true;
-  build(); syncVol();
+  build(); syncVol(); editFit();
 }
 function stopEdit() {
   editing = false; sel = null; touches.clear(); gest = null;
   document.body.classList.remove('edit'); $('ebar').hidden = true; $('eadd').hidden = true;
-  build(); syncVol();
+  build(); syncVol(); editFit();
 }
-// En bloque: tocar una flecha de la cruceta (o un boton de accion, o uno de los 8 de Peleas) elige todo su grupo,
-// que se mueve, cambia de tamano, se pinta y se quita junto sin deformarse. Uno a uno: cada boton por su lado
+// En bloque: tocar un boton de accion (o uno de los 8 de Peleas) elige todo su grupo, que se mueve, cambia de tamano,
+// se pinta y se quita junto sin deformarse. Uno a uno: cada boton por su lado. La cruceta es siempre una sola pieza
 let block = load('eblock') !== '0';
 function blockBtn() { $('eblock').textContent = block ? '🔗 En bloque' : '⛓ Uno a uno'; $('eblock').classList.toggle('on', block); }
 function selIds() {
   const el = sel && ctl[sel];
   if (!el) return [];
-  if (!block || !el._grp) return [sel];
+  if (!el._grp || (!block && el._grp !== 'dpad')) return [sel];
   return Object.keys(ctl).filter(k => { const c = ctl[k]; return c._grp === el._grp && c.style.display !== 'none' && c._p.a === el._p.a; });
 }
 function select(id) {
@@ -846,8 +866,8 @@ pad.addEventListener('pointermove', e => {
   const pts = [...touches.values()], u = unit(), a = bbox(gest.ps).a;
   if (pts.length > 1 && gest.d) moveBlock(gest.ps, 0, 0, Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]) / gest.d);
   else {
-    const dx = (pts[0][0] - gest.pts[0][0]) / u;
-    moveBlock(gest.ps, a === 'r' ? -dx : dx, (pts[0][1] - gest.pts[0][1]) / u);
+    const dx = (pts[0][0] - gest.pts[0][0]) / u / edScale;   // el mando esta encogido mientras se edita
+    moveBlock(gest.ps, a === 'r' ? -dx : dx, (pts[0][1] - gest.pts[0][1]) / u / edScale);
   }
 }, true);
 for (const t of ['pointerup', 'pointercancel']) pad.addEventListener(t, e => {
@@ -870,13 +890,17 @@ $('edel').addEventListener('click', () => {
 $('eaddb').addEventListener('click', () => {
   const box = $('eadd'); box.innerHTML = '';
   const opt = (text, fn) => { const b = document.createElement('button'); b.textContent = text; b.onclick = () => { fn(); box.hidden = true; }; box.appendChild(b); };
-  // Primero los que se quitaron (vuelven a su sitio), luego los que esta disposicion no trae
-  for (const id in draft) if (draft[id].hidden) opt('↩ ' + ((ctl[id] && ctl[id].firstChild && ctl[id].firstChild.textContent.trim()) || CONTROL_NAMES[id] || id), () => {
+  // Primero los que se quitaron (vuelven a su sitio), luego los que esta disposicion no trae.
+  // La cruceta va siempre como una pieza: un solo boton la devuelve o la anade entera
+  const hiddenDpad = Object.keys(draft).filter(id => draft[id].hidden && ctl[id] && ctl[id]._grp === 'dpad');
+  if (hiddenDpad.length) opt('↩ Cruceta ✚', () => { hiddenDpad.forEach(id => delete draft[id]); build(); select(hiddenDpad[0]); });
+  for (const id in draft) if (draft[id].hidden && !hiddenDpad.includes(id)) opt('↩ ' + ((ctl[id] && ctl[id].firstChild && ctl[id].firstChild.textContent.trim()) || CONTROL_NAMES[id] || id), () => {
     delete draft[id]; build(); select(id);
   });
-  const B = BRANDS[cfg.type];
+  const B = BRANDS[cfg.type], missDirs = DIRS.filter(n => !ctl[n]);
+  if (missDirs.length) opt('＋ Cruceta ✚', () => { missDirs.forEach(n => { draft[n] = { add:1 }; }); build(); select(missDirs[0]); });
   for (const n of ALL_CONTROLS) {
-    if (ctl[n] || (n === 'HOME' && !B.home) || (n === 'TOUCHPAD' && !B.touchpad)) continue;
+    if (ctl[n] || DIRS.includes(n) || (n === 'HOME' && !B.home) || (n === 'TOUCHPAD' && !B.touchpad)) continue;
     opt('＋ ' + controlLabel(n), () => { draft[n] = { add:1 }; build(); select(n); });
   }
   if (!box.children.length) opt('Ya están todos los botones', () => {});
